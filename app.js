@@ -163,27 +163,60 @@ function addTrainItem() {
 // ═══ AI Response Parse ═══
 function parseAIResponse() {
   const text = document.getElementById('ai-response').value;
-  if (!text.trim()) { showToast('返答を貼り付けてください'); return; }
-  // Parse training items
+  if (!text.trim()) { showToast('返答がありません'); return; }
+  
   const lines = text.split('\n');
   let inTrain = false, items = [], advice = [];
+  let pfcUpdated = false;
+  
   for (const line of lines) {
     const t = line.trim();
+    
+    // Parse PFC e.g. "朝: P:20g F:5g C:10g" or "昼(P20,F5,C10)"
+    const pfcMatch = t.match(/(朝|昼|夜|間食|snack|breakfast|lunch|dinner).*?P\s*[:：]?\s*([\d\.]+).*?F\s*[:：]?\s*([\d\.]+).*?C\s*[:：]?\s*([\d\.]+)/i);
+    if (pfcMatch) {
+      const mealMap = {'朝':'breakfast', '昼':'lunch', '夜':'dinner', '間食':'snack', 'breakfast':'breakfast', 'lunch':'lunch', 'dinner':'dinner', 'snack':'snack'};
+      const mealKey = mealMap[pfcMatch[1]];
+      if (mealKey && S.meals[mealKey]) {
+         S.meals[mealKey].p = Math.round(parseFloat(pfcMatch[2]));
+         S.meals[mealKey].f = Math.round(parseFloat(pfcMatch[3]));
+         S.meals[mealKey].c = Math.round(parseFloat(pfcMatch[4]));
+         pfcUpdated = true;
+      }
+      // Continue to next line so this doesn't show up in advice text directly if we don't want to, but actually keeping it in advice is fine too.
+      // We will skip adding purely PFC lines to advice if they start with meal name
+      if (/^(朝|昼|夜|間食).*P.*F.*C/.test(t)) continue;
+    }
+
     if (/[■【].*トレーニング|TRAINING/i.test(t)) { inTrain = true; continue; }
     if (/[■【]/.test(t) && inTrain) { inTrain = false; }
+    
     if (inTrain && t) {
+      // Ignore lines that look like conversational text or explanations
+      if (t.includes('目的') || t.includes('おすすめ') || t.includes('頑張り') || t.includes('です') || t.includes('ます')) continue;
       const clean = t.replace(/^[\d]+[.．)）]\s*/,'').replace(/^[・\-\*]\s*/,'');
       if (clean.length > 1) items.push({text:clean, done:false});
+      continue;
     }
+    
     // Collect non-training content as advice
     if (!inTrain && t && !/^[■【].*トレーニング/.test(t)) advice.push(t);
   }
+
+  // Update UI with parsed data
+  if (pfcUpdated) {
+    DB.set('t_meals', S.meals);
+    renderMeal(); // update inputs for current active meal tab
+    renderPFC();  // update total PFC UI
+  }
+
   if (items.length > 0) {
     S.trainItems = items; DB.set('t_train', S.trainItems); renderTrainList();
-    showToast(items.length + '種目を抽出しました');
+    showToast(items.length + '種目を抽出し、PFCを反映しました');
   } else {
-    showToast('トレーニング種目が見つかりません。手動で追加してください');
+    showToast(pfcUpdated ? 'PFCのみを反映しました' : '種目が見つかりませんでした');
   }
+  
   S.aiAdvice = advice.join('\n'); DB.set('t_aiAdvice', S.aiAdvice);
   renderAIAdvice();
 }
@@ -244,7 +277,9 @@ function sendToAI() {
   // Today meal summary
   const mealStr = Object.entries(S.meals).map(([k,v])=>{
     const n={breakfast:'朝',lunch:'昼',dinner:'夜',snack:'間食'}[k];
-    return v.food ? `${n}: ${v.food} (P${v.p||0}g F${v.f||0}g C${v.c||0}g)` : '';
+    if (!v.food) return '';
+    const hasPFC = (parseFloat(v.p)||parseFloat(v.f)||parseFloat(v.c));
+    return `${n}: ${v.food} ${hasPFC ? `(P${v.p||0}g F${v.f||0}g C${v.c||0}g)` : '(PFC未入力)'}`;
   }).filter(Boolean).join('\n') || '未入力';
 
   const doneCount = S.trainItems.filter(x=>x.done).length;
@@ -271,7 +306,7 @@ ${history}
 体重：${S.weight||'未入力'}kg
 体脂肪率：${S.fat||'未入力'}%
 歩数：${S.steps||'未入力'}歩
-食事：
+食事内容（PFC未入力の場合は食事名からPFCを自動計算して推測してください）：
 ${mealStr}
 PFC合計：P${p.toFixed(0)}g / F${f.toFixed(0)}g / C${c.toFixed(0)}g（${kcal}kcal）
 トレーニング実施状況：
@@ -279,9 +314,17 @@ ${trainStatus}
 ${S.extraTraining?'追加トレーニング：'+S.extraTraining:''}
 
 【出力形式 - 以下の形式を厳守】
-■トレーニング（明日のメニュー）
-1. 種目名 負荷×回数×セット数
-2. ...
+■PFC推測
+未入力の食事がある場合、必ず以下の形式でPFC推測値を出力すること。
+朝: P:◯g F:◯g C:◯g
+昼: P:◯g F:◯g C:◯g
+夜: P:◯g F:◯g C:◯g
+間食: P:◯g F:◯g C:◯g
+
+■明日のトレーニング
+※種目名と回数・セット数のみを箇条書きすること。目的や解説の記載は厳禁。
+・種目名 ◯回×◯セット
+・種目名 ◯回×◯セット
 
 ■食事アドバイス
 朝:
