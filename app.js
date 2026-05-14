@@ -330,7 +330,7 @@ ${S.extraTraining?'追加トレーニング：'+S.extraTraining:''}
 
 async function fetchAI(type, key, prompt) {
   if (type === 'gemini') {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`;
     const req = {
       contents: [{parts:[{text:prompt}]}]
     };
