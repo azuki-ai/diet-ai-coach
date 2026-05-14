@@ -156,12 +156,22 @@
         <button class="btn btn-ghost btn-sm" style="margin-top:6px; display:none;" id="btn-parse" onclick="parseAIResponse()">PARSE</button>
         <div class="ai-advice" id="ai-advice" style="display:none"></div>
       </div>
-      <!-- AI Send -->
       <div class="section">
         <div class="card-title" style="display:flex; justify-content:space-between; align-items:flex-end;">
           <span>AI COACH</span>
           <span style="color:#1890ff; font-size:12px; font-weight:normal; text-transform:none;">Lv.<strong id="coach-lv" style="font-size:14px;">1</strong> (<span id="coach-exp">0</span>/100 EXP)</span>
         </div>
+        
+        <div style="font-size:11px; color:#848e9c; margin-bottom:8px;">明日使えるトレーニング器具（タップで選択）</div>
+        <div class="equip-grid" style="margin-bottom:16px;">
+          <button class="equip-btn active" data-equip="bodyweight">自重</button>
+          <button class="equip-btn active" data-equip="dumbbells">ダンベル</button>
+          <button class="equip-btn active" data-equip="pullup">懸垂機</button>
+          <button class="equip-btn" data-equip="barbell">バーベル</button>
+          <button class="equip-btn" data-equip="bench">ベンチ</button>
+          <button class="equip-btn" data-equip="bands">チューブ</button>
+        </div>
+
         <div class="ai-chips">
           <div class="ai-chip" data-ai="chatgpt">ChatGPT</div>
           <div class="ai-chip" data-ai="gemini">Gemini</div>
@@ -264,17 +274,6 @@
       <button class="goal-btn" data-goal="bulk">増量</button>
       <button class="goal-btn active" data-goal="recomp">リコンプ</button>
       <button class="goal-btn" data-goal="cut">減量</button>
-    </div>
-  </div>
-  <div class="setting-group">
-    <div class="setting-group-title">EQUIPMENT</div>
-    <div class="equip-grid">
-      <button class="equip-btn active" data-equip="bodyweight">自重</button>
-      <button class="equip-btn active" data-equip="dumbbells">ダンベル</button>
-      <button class="equip-btn active" data-equip="pullup">懸垂機</button>
-      <button class="equip-btn" data-equip="barbell">バーベル</button>
-      <button class="equip-btn" data-equip="bench">ベンチ</button>
-      <button class="equip-btn" data-equip="bands">チューブ</button>
     </div>
   </div>
   <div class="setting-group">

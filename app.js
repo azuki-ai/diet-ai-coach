@@ -117,7 +117,12 @@ document.addEventListener('DOMContentLoaded', () => {
   updateDeltas();
   updateBodyStatus();
   updateMetaUI();
+  renderEquip();
 });
+
+function renderEquip() {
+  document.querySelectorAll('.equip-btn').forEach(b=>b.classList.toggle('active',(S.settings.equipment||[]).includes(b.dataset.equip)));
+}
 
 function updateMetaUI() {
   const elStreak = document.getElementById('streak-val');
@@ -607,12 +612,11 @@ function renderSettings(){
   document.getElementById('set-gender').value=s.gender||'male';
   document.getElementById('set-gemini-key').value=s.geminiKey||'';
   document.getElementById('set-openai-key').value=s.openaiKey||'';
-  document.querySelectorAll('.equip-btn').forEach(b=>b.classList.toggle('active',(s.equipment||[]).includes(b.dataset.equip)));
   document.querySelectorAll('.goal-btn').forEach(b=>b.classList.toggle('active',b.dataset.goal===s.goal));
 }
 function bindSetting(id,key){const el=document.getElementById(id);if(!el)return;el.addEventListener('change',()=>{S.settings[key]=el.value;saveSets();if(['height','age','targetWeight','gender','activityLevel'].includes(key)){updateBodyStatus();renderPFC();}})}
 function saveSets(){DB.set('settings',S.settings)}
-function toggleEquip(e){const a=S.settings.equipment||[];const i=a.indexOf(e);if(i>=0)a.splice(i,1);else a.push(e);S.settings.equipment=a;saveSets();document.querySelectorAll('.equip-btn').forEach(b=>b.classList.toggle('active',a.includes(b.dataset.equip)))}
+function toggleEquip(e){const a=S.settings.equipment||[];const i=a.indexOf(e);if(i>=0)a.splice(i,1);else a.push(e);S.settings.equipment=a;saveSets();renderEquip();}
 function setGoal(g){S.settings.goal=g;saveSets();renderPFC();document.querySelectorAll('.goal-btn').forEach(b=>b.classList.toggle('active',b.dataset.goal===g))}
 
 // ═══ History ═══
