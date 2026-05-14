@@ -39,6 +39,7 @@ function navTo(page) {
   document.querySelectorAll('.nav-item,.sidebar-link,.tab').forEach(n => n.classList.toggle('active', n.dataset.nav === page));
   if (page === 'graph') renderGraphs();
   if (page === 'settings') renderSettings();
+  if (page === 'history') renderHistory();
 }
 
 // ═══ Init ═══
@@ -133,25 +134,57 @@ function totalPFC() {
   Object.values(S.meals).forEach(m => { p+=parseFloat(m.p)||0; f+=parseFloat(m.f)||0; c+=parseFloat(m.c)||0; });
   return {p,f,c};
 }
+
+function getTargets() {
+  const s = S.settings;
+  const w = parseFloat(S.weight) || parseFloat(s.targetWeight) || 60;
+  const h = parseFloat(s.height) || 170;
+  const a = parseFloat(s.age) || 30;
+  const g = s.gender || 'male';
+  let bmr = (10 * w) + (6.25 * h) - (5 * a) + (g === 'male' ? 5 : -161);
+  const act = {low:1.2, moderate:1.55, high:1.725}[s.activityLevel] || 1.55;
+  let tdee = bmr * act;
+  let tCal = tdee;
+  if (s.goal === 'cut') tCal -= 500;
+  else if (s.goal === 'bulk') tCal += 300;
+  const tP = w * 2;
+  const tF = (tCal * 0.25) / 9;
+  const tC = (tCal - (tP*4) - (tF*9)) / 4;
+  return { cal: Math.round(tCal), p: Math.round(tP), f: Math.round(tF), c: Math.round(tC) };
+}
+
 function renderPFC() {
   const {p,f,c} = totalPFC();
+  const tgt = getTargets();
   const kcal = p*4+f*9+c*4;
-  const pP = kcal ? Math.round(p*4/kcal*100) : 0;
-  const fP = kcal ? Math.round(f*9/kcal*100) : 0;
-  const cP = kcal ? 100-pP-fP : 0;
+  
   document.getElementById('pfc-p-val').textContent = p.toFixed(0)+'g';
   document.getElementById('pfc-f-val').textContent = f.toFixed(0)+'g';
   document.getElementById('pfc-c-val').textContent = c.toFixed(0)+'g';
+  
+  const elTgtP = document.getElementById('tgt-p');
+  const elTgtF = document.getElementById('tgt-f');
+  const elTgtC = document.getElementById('tgt-c');
+  if(elTgtP) {
+    elTgtP.textContent = `/ ${tgt.p}g`;
+    elTgtF.textContent = `/ ${tgt.f}g`;
+    elTgtC.textContent = `/ ${tgt.c}g`;
+    document.getElementById('tdee-note').textContent = `目標カロリー: ${tgt.cal} kcal (現在 ${Math.round(kcal)} kcal)`;
+  }
+  
+  const pP = tgt.p ? Math.min(100, Math.round(p/tgt.p*100)) : 0;
+  const fP = tgt.f ? Math.min(100, Math.round(f/tgt.f*100)) : 0;
+  const cP = tgt.c ? Math.min(100, Math.round(c/tgt.c*100)) : 0;
+  
   document.getElementById('pfc-bar-p').style.width = pP+'%';
   document.getElementById('pfc-bar-f').style.width = fP+'%';
   document.getElementById('pfc-bar-c').style.width = cP+'%';
-  let note = `${Math.round(kcal)} kcal`;
+  
+  let note = ``;
   if (kcal > 0) {
-    note += ` | P${pP}% F${fP}% C${cP}%\n`;
-    const g = S.settings.goal;
-    if (g==='cut') note += pP>=35 ? 'タンパク質十分' : 'もっとタンパク質を';
-    else if (g==='bulk') note += cP>=45 ? '糖質十分' : '糖質を増やそう';
-    else note += (pP>=25&&pP<=35) ? 'バランス良好' : 'P25-35%を目指そう';
+    if (p >= tgt.p) note += '✅タンパク質達成 ';
+    else note += `💪Pあと${(tgt.p - p).toFixed(0)}g `;
+    if (kcal > tgt.cal) note += '⚠️カロリーオーバー ';
   }
   document.getElementById('pfc-note').textContent = note;
 }
@@ -380,6 +413,8 @@ ${S.extraTraining?'追加トレーニング：'+S.extraTraining:''}
     S.aiResponse = res; DB.set('t_aiResp', res);
     parseAIResponse();
     showToast('AIの返答を取得・解析しました');
+    currentImageBase64 = null;
+    document.getElementById('ai-image-name').textContent = '';
   }).catch(err => {
     console.error(err);
     showToast('AI取得エラー: ' + (err.message || '不明なエラー'));
@@ -388,12 +423,28 @@ ${S.extraTraining?'追加トレーニング：'+S.extraTraining:''}
   });
 }
 
+let currentImageBase64 = null;
+let currentImageMime = null;
+function handleAIImage(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  document.getElementById('ai-image-name').textContent = '📸 ' + file.name;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    currentImageMime = file.type;
+    currentImageBase64 = ev.target.result.split(',')[1];
+  };
+  reader.readAsDataURL(file);
+}
+
 async function fetchAI(type, key, prompt) {
   if (type === 'gemini') {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`;
-    const req = {
-      contents: [{parts:[{text:prompt}]}]
-    };
+    const parts = [{text:prompt}];
+    if (currentImageBase64) {
+      parts.unshift({ inline_data: { mime_type: currentImageMime, data: currentImageBase64 } });
+    }
+    const req = { contents: [{parts}] };
     const res = await fetch(url, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(req)
@@ -476,10 +527,67 @@ function renderSettings(){
   document.querySelectorAll('.equip-btn').forEach(b=>b.classList.toggle('active',(s.equipment||[]).includes(b.dataset.equip)));
   document.querySelectorAll('.goal-btn').forEach(b=>b.classList.toggle('active',b.dataset.goal===s.goal));
 }
-function bindSetting(id,key){const el=document.getElementById(id);if(!el)return;el.addEventListener('change',()=>{S.settings[key]=el.value;saveSets()})}
+function bindSetting(id,key){const el=document.getElementById(id);if(!el)return;el.addEventListener('change',()=>{S.settings[key]=el.value;saveSets();if(['height','age','targetWeight','gender','activityLevel'].includes(key)){updateBodyStatus();renderPFC();}})}
 function saveSets(){DB.set('settings',S.settings)}
 function toggleEquip(e){const a=S.settings.equipment||[];const i=a.indexOf(e);if(i>=0)a.splice(i,1);else a.push(e);S.settings.equipment=a;saveSets();document.querySelectorAll('.equip-btn').forEach(b=>b.classList.toggle('active',a.includes(b.dataset.equip)))}
-function setGoal(g){S.settings.goal=g;saveSets();document.querySelectorAll('.goal-btn').forEach(b=>b.classList.toggle('active',b.dataset.goal===g))}
+function setGoal(g){S.settings.goal=g;saveSets();renderPFC();document.querySelectorAll('.goal-btn').forEach(b=>b.classList.toggle('active',b.dataset.goal===g))}
+
+// ═══ History ═══
+function renderHistory() {
+  const hl = document.getElementById('history-list');
+  if (!hl) return;
+  if (!S.records.length) { hl.innerHTML = '<div class="empty-state">まだ記録がありません</div>'; return; }
+  let html = '';
+  const rev = [...S.records].reverse();
+  for (const r of rev) {
+    let tMeals = '';
+    if (r.meals) {
+      Object.entries(r.meals).forEach(([k,v])=>{
+        if(v.food) tMeals += `${{breakfast:'朝',lunch:'昼',dinner:'夜',snack:'間'}[k]}: ${v.food}<br>`;
+      });
+    }
+    html += `
+    <div class="card" style="margin-bottom:12px; font-size:13px; line-height:1.5;">
+      <div style="display:flex; justify-content:space-between; color:#03c076; font-weight:bold; margin-bottom:8px;">
+        <span>${r.date}</span>
+        <span>達成率 ${r.trainDone||0}%</span>
+      </div>
+      <div style="color:#eaecef;">
+        体重: ${r.weight||'--'}kg / 体脂肪: ${r.fat||'--'}% / 歩数: ${r.steps||'--'}<br>
+      </div>
+      <div style="margin-top:8px; color:#848e9c; border-top:1px solid #2b3139; padding-top:8px;">
+        ${tMeals||'食事記録なし'}
+      </div>
+    </div>`;
+  }
+  hl.innerHTML = html;
+}
+
+// ═══ Data Backup / Restore ═══
+function exportData() {
+  const data = JSON.stringify(localStorage);
+  const blob = new Blob([data], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `diet_ai_backup_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+}
+function importData(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    try {
+      const data = JSON.parse(ev.target.result);
+      if(!data.settings && !data.records) throw new Error();
+      localStorage.clear();
+      Object.keys(data).forEach(k => localStorage.setItem(k, data[k]));
+      showToast('復元しました。再読み込みします。');
+      setTimeout(() => location.reload(), 1500);
+    } catch(err) { showToast('ファイル形式が不正です'); }
+  };
+  reader.readAsText(file);
+}
 
 // ═══ Utils ═══
 function showToast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._to);t._to=setTimeout(()=>t.classList.remove('show'),2400)}

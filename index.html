@@ -18,6 +18,7 @@
   <nav class="sidebar-nav">
     <div class="sidebar-link active" data-nav="today" onclick="navTo('today')"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>TODAY</div>
     <div class="sidebar-link" data-nav="graph" onclick="navTo('graph')"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>GRAPH</div>
+    <div class="sidebar-link" data-nav="history" onclick="navTo('history')"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>HISTORY</div>
     <div class="sidebar-link" data-nav="settings" onclick="navTo('settings')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>SETTINGS</div>
   </nav>
 </aside>
@@ -31,6 +32,7 @@
   <div class="tabs">
     <div class="tab active" data-nav="today" onclick="navTo('today')">TODAY</div>
     <div class="tab" data-nav="graph" onclick="navTo('graph')">GRAPH</div>
+    <div class="tab" data-nav="history" onclick="navTo('history')">HISTORY</div>
     <div class="tab" data-nav="settings" onclick="navTo('settings')">SETTINGS</div>
   </div>
 </div>
@@ -79,7 +81,14 @@
       </div>
       <!-- Meal -->
       <div class="section">
-        <div class="card-title">MEAL</div>
+        <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">
+          <span>MEAL</span>
+          <div>
+            <input type="file" id="ai-image-input" accept="image/*" style="display:none" onchange="handleAIImage(event)">
+            <button class="btn btn-ghost btn-sm" onclick="document.getElementById('ai-image-input').click()">📷 写真から入力</button>
+          </div>
+        </div>
+        <div id="ai-image-name" style="font-size:11px; color:#03c076; margin-bottom:8px;"></div>
         <div class="meal-tabs">
           <div class="meal-tab active" data-meal="breakfast">朝</div>
           <div class="meal-tab" data-meal="lunch">昼</div>
@@ -95,11 +104,12 @@
       </div>
       <!-- PFC -->
       <div class="section" id="pfc-section">
-        <div class="card-title">PFC BALANCE</div>
+        <div class="card-title">DAILY TARGET & PFC</div>
+        <div style="font-size:11px; color:#848e9c; margin-bottom:8px;" id="tdee-note">目標カロリー: -- kcal</div>
         <div class="pfc-totals">
-          <div class="pfc-box p"><div class="val" id="pfc-p-val">0g</div><div class="lbl">Protein</div></div>
-          <div class="pfc-box f"><div class="val" id="pfc-f-val">0g</div><div class="lbl">Fat</div></div>
-          <div class="pfc-box c"><div class="val" id="pfc-c-val">0g</div><div class="lbl">Carbs</div></div>
+          <div class="pfc-box p"><div class="val" id="pfc-p-val">0g</div><div class="lbl" id="tgt-p">/ -- g</div></div>
+          <div class="pfc-box f"><div class="val" id="pfc-f-val">0g</div><div class="lbl" id="tgt-f">/ -- g</div></div>
+          <div class="pfc-box c"><div class="val" id="pfc-c-val">0g</div><div class="lbl" id="tgt-c">/ -- g</div></div>
         </div>
         <div class="pfc-bar">
           <div class="pfc-p" id="pfc-bar-p" style="width:0"></div>
@@ -107,7 +117,7 @@
           <div class="pfc-c" id="pfc-bar-c" style="width:0"></div>
         </div>
         <div class="pfc-legend"><span><i class="dot dot-p"></i>P</span><span><i class="dot dot-f"></i>F</span><span><i class="dot dot-c"></i>C</span></div>
-        <div class="pfc-note" id="pfc-note">PFCを入力すると自動集計</div>
+        <div class="pfc-note" id="pfc-note"></div>
       </div>
     </div>
     <div class="today-right">
@@ -164,6 +174,12 @@
   <div id="chart-fat" style="margin-bottom:16px"></div>
   <div class="card-title">STEPS</div>
   <div id="chart-steps" style="margin-bottom:16px"></div>
+</div>
+
+<!-- ══ HISTORY ══ -->
+<div class="page" data-page="history">
+  <div class="card-title" style="margin-bottom:16px;">PAST RECORDS</div>
+  <div id="history-list"></div>
 </div>
 
 <!-- ══ SETTINGS ══ -->
@@ -232,6 +248,19 @@
       </div>
     </div>
   </div>
+  <div class="setting-group">
+    <div class="setting-group-title">DATA MANAGEMENT</div>
+    <div class="card">
+      <div class="btn-row">
+        <button class="btn btn-ghost" onclick="exportData()">バックアップ保存</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('import-file').click()">データ復元</button>
+        <input type="file" id="import-file" style="display:none" accept=".json" onchange="importData(event)">
+      </div>
+      <div style="font-size:11px;color:#5e6673;margin-top:6px;line-height:1.4;">
+        ※定期的にバックアップを保存することをおすすめします。復元時は上書きされます。
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- Bottom Nav (Mobile) -->
@@ -241,6 +270,9 @@
   </div>
   <div class="nav-item" data-nav="graph" onclick="navTo('graph')">
     <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>GRAPH
+  </div>
+  <div class="nav-item" data-nav="history" onclick="navTo('history')">
+    <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>HISTORY
   </div>
   <div class="nav-item" data-nav="settings" onclick="navTo('settings')">
     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>SETTINGS
