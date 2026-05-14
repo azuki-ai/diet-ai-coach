@@ -43,7 +43,10 @@ const S = {
   waitingForAI: false,
   streak: streak,
   coachExp: coachExp,
-  coachLevel: coachLevel
+  coachLevel: coachLevel,
+  coins: DB.get('game_coins', 0),
+  inventory: DB.get('game_inventory', []),
+  boss: DB.get('game_boss', { level: 1, hp: 1000, maxHp: 1000 })
 };
 
 // ═══ Nav ═══
@@ -53,6 +56,7 @@ function navTo(page) {
   if (page === 'graph') renderGraphs();
   if (page === 'settings') renderSettings();
   if (page === 'history') renderHistory();
+  if (page === 'game') renderGame();
 }
 
 // ═══ Init ═══
@@ -329,6 +333,28 @@ function saveRecord() {
   DB.set('coach_level', S.coachLevel); DB.set('coach_exp', S.coachExp);
   updateMetaUI();
 
+  // Boss Battle Logic
+  const tgt = getTargets();
+  const {p,f,c} = totalPFC();
+  const kcal = p*4+f*9+c*4;
+  let dmg = 50 + (S.streak * 5); // Base dmg + streak
+  if (S.trainItems.length && doneCount === S.trainItems.length) dmg += 100;
+  if (kcal > 0 && Math.abs(kcal - tgt.cal) < 300) dmg += 100;
+  
+  S.boss.hp -= dmg;
+  if (S.boss.hp <= 0) {
+    const reward = 100 + (S.boss.level - 1) * 20;
+    S.coins += reward;
+    S.boss.level++;
+    S.boss.maxHp = 500 + S.boss.level * 500;
+    S.boss.hp = S.boss.maxHp;
+    setTimeout(()=>{ triggerConfetti(); showToast(`⚔️ ボス討伐！ ${reward}コイン獲得！`); renderGame(); }, 1500);
+    DB.set('game_coins', S.coins);
+  } else {
+    showToast(`⚔️ ボスに ${dmg} ダメージを与えた！`);
+  }
+  DB.set('game_boss', S.boss);
+
   const rec = {
     date: today, weight: S.weight, fat: S.fat, steps: S.steps,
     meals: JSON.parse(JSON.stringify(S.meals)),
@@ -383,16 +409,18 @@ function sendToAI() {
   const doneCount = S.trainItems.filter(x=>x.done).length;
   const trainStatus = S.trainItems.length ? S.trainItems.map(t=>`${t.done?'[済]':'[未]'} ${t.text}`).join('\n') : '未設定';
 
-  let toneStr = "冷静で専門的なトーン";
-  if (S.coachLevel >= 15) toneStr = "最高に熱い情熱と、絶対の信頼を寄せる親友のような口調";
-  else if (S.coachLevel >= 10) toneStr = "非常にフレンドリーで、少しフランクで感情豊かな口調";
-  else if (S.coachLevel >= 5) toneStr = "親しみやすく、優しく励ましてくれる温かいトーン";
-  else if (S.coachLevel >= 2) toneStr = "丁寧だが少し親しみの湧くトーン";
+  let toneStr = "【TRPGのゲームマスター風】ファンタジーRPGの世界観で、ユーザーを『勇者』と呼び、脂肪を『魔物』に例えること。丁寧で落ち着いた導き手のような口調";
+  if (S.coachLevel >= 15) toneStr = "【TRPGのゲームマスター風】ファンタジーRPGの世界観で、ユーザーを『勇者』と呼び、脂肪を『魔王』に例えること。最高に熱い情熱と大声で、魂を震わせるような超劇的な口調";
+  else if (S.coachLevel >= 10) toneStr = "【TRPGのゲームマスター風】ファンタジーRPGの世界観で、ユーザーを『勇者』と呼び、共に最前線で戦う熱血な戦友のような、かなり熱い口調";
+  else if (S.coachLevel >= 5) toneStr = "【TRPGのゲームマスター風】ファンタジーRPGの世界観で、ユーザーを『勇者』と呼び、冒険を優しく見守りながらも熱く励ましてくれる口調";
+  else if (S.coachLevel >= 2) toneStr = "【TRPGのゲームマスター風】ファンタジーRPGの世界観で、ユーザーを『勇者』と呼び、冒険の始まりを告げるような、親しみやすく少しワクワクする口調";
 
   const prompt = `あなたは最高峰のパーソナルトレーナー兼管理栄養士です。
 
 【ルール】
-・ユーザーとの親密度（Lv.${S.coachLevel}）に合わせて、${toneStr}で回答すること。親密度が高いほど労いや褒め言葉を増やすこと。
+・必ず設定された以下のトーン（口調・世界観）を守って回答すること：
+「${toneStr}」
+・親密度（Lv.${S.coachLevel}）が高いほど、勇者への労いや賞賛の言葉を増やすこと。
 ・過去データを分析し、最適なトレーニングメニューと食事アドバイスを出す
 ・利用可能な器具のみでメニューを組む
 ・目標に合わせた負荷設定
@@ -616,6 +644,65 @@ function renderHistory() {
     </div>`;
   }
   hl.innerHTML = html;
+}
+
+// ═══ Game (Boss & Gacha) ═══
+function renderGame() {
+  const elLv = document.getElementById('boss-lv'); if(!elLv) return;
+  elLv.textContent = S.boss.level;
+  
+  const bNames = ['暴食の魔王', '怠惰の悪魔', '炭水化物の化身', '深夜の誘惑者', 'リバウンド大帝'];
+  document.getElementById('boss-name').textContent = bNames[(S.boss.level - 1) % bNames.length];
+  
+  const hpP = Math.max(0, Math.min(100, (S.boss.hp / S.boss.maxHp) * 100));
+  document.getElementById('boss-hp-bar').style.width = hpP + '%';
+  document.getElementById('boss-hp-text').textContent = `${Math.max(0, S.boss.hp)} / ${S.boss.maxHp}`;
+  document.getElementById('coin-val').textContent = S.coins;
+  
+  const invList = document.getElementById('inventory-list');
+  if (S.inventory.length === 0) {
+    invList.innerHTML = '<div class="empty-state" style="width:100%">まだアイテムを持っていません</div>';
+  } else {
+    // Count items
+    const counts = {};
+    S.inventory.forEach(i => counts[i] = (counts[i]||0) + 1);
+    invList.innerHTML = Object.entries(counts).map(([name, count]) => `
+      <div style="background:#2b3139; padding:8px 12px; border-radius:6px; font-size:13px; color:#eaecef; display:flex; align-items:center; border:1px solid #363c45;">
+        ${name} <span style="background:#03c076; color:#0b0e11; font-weight:bold; padding:2px 6px; border-radius:10px; font-size:11px; margin-left:8px;">x${count}</span>
+      </div>
+    `).join('');
+  }
+}
+
+function rollGacha() {
+  if (S.coins < 50) { showToast('コインが足りません'); return; }
+  S.coins -= 50; DB.set('game_coins', S.coins);
+  
+  const r = Math.random();
+  let item = '';
+  if (r < 0.01) item = '🎟️ 究極のチートデイ解放券';
+  else if (r < 0.09) item = '🍔 ギルティ・バーガー';
+  else if (r < 0.17) item = '🍕 真夜中のピザ';
+  else if (r < 0.25) item = '🍜 魅惑の豚骨ラーメン';
+  else if (r < 0.40) item = '🍰 ご褒美ショートケーキ';
+  else if (r < 0.55) item = '🍩 悪魔のチョコドーナツ';
+  else if (r < 0.70) item = '🍦 誘惑のソフトクリーム';
+  else item = '🍫 ちょっと一息チョコレート';
+  
+  S.inventory.push(item);
+  DB.set('game_inventory', S.inventory);
+  
+  if (r < 0.01) {
+    triggerConfetti();
+    setTimeout(() => alert('🎉🎉 大当たり！！\n【究極のチートデイ解放券】を獲得しました！\n今日だけは何を食べてもOK！'), 500);
+  } else if (r < 0.25) {
+    triggerConfetti();
+    showToast(`✨ レアアイテム！\n${item} を獲得！`);
+  } else {
+    showToast(`${item} を獲得した`);
+  }
+  
+  renderGame();
 }
 
 // ═══ Data Backup / Restore ═══
