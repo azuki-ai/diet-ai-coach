@@ -307,7 +307,7 @@ ${S.extraTraining?'追加トレーニング：'+S.extraTraining:''}
     return;
   }
 
-  const key = aiType === 'gemini' ? S.settings.geminiKey : S.settings.openaiKey;
+  const key = aiType === 'gemini' ? S.settings.geminiKey.trim() : S.settings.openaiKey.trim();
   if (!key) {
     showToast(`設定タブで${aiType}のAPIキーを入力してください`);
     navTo('settings');
@@ -322,7 +322,7 @@ ${S.extraTraining?'追加トレーニング：'+S.extraTraining:''}
     showToast('AIの返答を取得・解析しました');
   }).catch(err => {
     console.error(err);
-    showToast('AI取得エラー: ' + err.message);
+    showToast('AI取得エラー: ' + (err.message || '不明なエラー'));
   }).finally(() => {
     btn.disabled = false; btn.textContent = 'SEND TO AI';
   });
@@ -338,7 +338,10 @@ async function fetchAI(type, key, prompt) {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(req)
     });
-    if(!res.ok) throw new Error(res.statusText);
+    if(!res.ok) {
+      const errData = await res.json().catch(()=>({}));
+      throw new Error((errData.error && errData.error.message) ? errData.error.message : `HTTPエラー ${res.status}`);
+    }
     const data = await res.json();
     return data.candidates[0].content.parts[0].text;
   } else if (type === 'chatgpt') {
@@ -351,7 +354,10 @@ async function fetchAI(type, key, prompt) {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer '+key },
       body: JSON.stringify(req)
     });
-    if(!res.ok) throw new Error(res.statusText);
+    if(!res.ok) {
+      const errData = await res.json().catch(()=>({}));
+      throw new Error((errData.error && errData.error.message) ? errData.error.message : `HTTPエラー ${res.status}`);
+    }
     const data = await res.json();
     return data.choices[0].message.content;
   }
