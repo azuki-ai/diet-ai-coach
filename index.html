@@ -9,6 +9,7 @@
 <title>TRAINING AI</title>
 <link rel="manifest" href="manifest.json">
 <link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 </head>
 <body>
 
@@ -26,7 +27,7 @@
 <!-- Topbar (Mobile) -->
 <div class="topbar">
   <div class="topbar-row">
-    <div class="topbar-title">TRAINING AI</div>
+    <div class="topbar-title">TRAINING AI <span style="font-size:12px;color:#f0b90b;margin-left:8px;">🔥 <span id="streak-val">0</span>日連続</span></div>
     <div class="topbar-date" id="topbar-date"></div>
   </div>
   <div class="tabs">
@@ -71,6 +72,16 @@
           </div>
           <div class="meter-bar" style="position:relative; height:6px; background:linear-gradient(to right, #1890ff 20%, #03c076 40%, #03c076 60%, #f0b90b 80%, #e84142 100%); border-radius:3px;">
             <div id="fat-pointer" style="position:absolute; top:-4px; width:4px; height:14px; background:#fff; border-radius:2px; box-shadow:0 0 4px rgba(0,0,0,0.8); transition: left 0.4s ease; left:0%;"></div>
+          </div>
+          <!-- Goal Progress -->
+          <div style="margin-top:16px;">
+            <div class="meter-label" style="display:flex; justify-content:space-between; font-size:11px; color:#848e9c; margin-bottom:4px;">
+              <span>目標体重まで: あと<strong id="goal-diff" style="color:#eaecef;">--</strong>kg</span>
+              <span id="goal-percent">--%</span>
+            </div>
+            <div class="meter-bar" style="position:relative; height:8px; background:#2b3139; border-radius:4px; overflow:hidden;">
+              <div id="goal-progress-bar" style="width:0%; height:100%; background:linear-gradient(to right, #03c076, #f0b90b); transition:width 0.5s ease;"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -145,7 +156,10 @@
       </div>
       <!-- AI Send -->
       <div class="section">
-        <div class="card-title">AI COACH</div>
+        <div class="card-title" style="display:flex; justify-content:space-between; align-items:flex-end;">
+          <span>AI COACH</span>
+          <span style="color:#1890ff; font-size:12px; font-weight:normal; text-transform:none;">Lv.<strong id="coach-lv" style="font-size:14px;">1</strong> (<span id="coach-exp">0</span>/100 EXP)</span>
+        </div>
         <div class="ai-chips">
           <div class="ai-chip" data-ai="chatgpt">ChatGPT</div>
           <div class="ai-chip" data-ai="gemini">Gemini</div>

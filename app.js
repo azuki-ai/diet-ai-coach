@@ -4,13 +4,23 @@ const DB = {
   set(k, v) { localStorage.setItem(k, JSON.stringify(v)); }
 };
 
-// ═══ Date Change Reset ═══
+// ═══ Date Change Reset & Streak ═══
 const todayStr = new Date().toISOString().slice(0,10);
 const lastDate = DB.get('last_date', todayStr);
+let streak = DB.get('streak_count', 0);
+let coachExp = DB.get('coach_exp', 0);
+let coachLevel = DB.get('coach_level', 1);
+
 if (lastDate !== todayStr) {
+  if (lastDate) {
+    const y = new Date(); y.setDate(y.getDate()-1);
+    const yesterday = y.toISOString().slice(0,10);
+    if (lastDate !== yesterday) streak = 0; // Reset streak if missed a day
+  }
   // 日付が変わったら、その日の記録用の一時データをクリア（トレーニングメニューは翌日用なので残す）
   ['t_weight', 't_fat', 't_steps', 't_extra', 't_meals', 't_aiResp', 't_aiAdvice'].forEach(k => localStorage.removeItem(k));
   DB.set('last_date', todayStr);
+  DB.set('streak_count', streak);
 } else if (!localStorage.getItem('last_date')) {
   DB.set('last_date', todayStr);
 }
@@ -31,6 +41,9 @@ const S = {
   settings: DB.get('settings', { name:'', age:'', height:'', targetWeight:'', equipment:['bodyweight','dumbbells','pullup'], goal:'recomp', activityLevel:'moderate', geminiKey:'', openaiKey:'', gender:'male' }),
   graphPeriod: 30,
   waitingForAI: false,
+  streak: streak,
+  coachExp: coachExp,
+  coachLevel: coachLevel
 };
 
 // ═══ Nav ═══
@@ -99,7 +112,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   updateDeltas();
   updateBodyStatus();
+  updateMetaUI();
 });
+
+function updateMetaUI() {
+  const elStreak = document.getElementById('streak-val');
+  if (elStreak) elStreak.textContent = S.streak;
+  const elLv = document.getElementById('coach-lv');
+  if (elLv) elLv.textContent = S.coachLevel;
+  const elExp = document.getElementById('coach-exp');
+  if (elExp) elExp.textContent = S.coachExp;
+}
 
 function bindVal(id, key, dbKey) {
   const el = document.getElementById(id); if (!el) return;
@@ -201,7 +224,15 @@ function renderTrainList() {
       <button class="train-del" onclick="delTrain(${i})">x</button>
     </div>`).join('');
 }
-function toggleTrain(i) { S.trainItems[i].done = !S.trainItems[i].done; DB.set('t_train', S.trainItems); renderTrainList(); }
+function toggleTrain(i) { 
+  S.trainItems[i].done = !S.trainItems[i].done; 
+  DB.set('t_train', S.trainItems); 
+  renderTrainList(); 
+  if (S.trainItems[i].done && S.trainItems.every(x=>x.done)) {
+    triggerConfetti();
+    showToast('🎉 全トレーニング達成！素晴らしい！');
+  }
+}
 function delTrain(i) { S.trainItems.splice(i,1); DB.set('t_train', S.trainItems); renderTrainList(); }
 function addTrainItem() {
   const inp = document.getElementById('train-add-input');
@@ -282,6 +313,22 @@ function saveRecord() {
   const today = new Date().toISOString().slice(0,10);
   const idx = S.records.findIndex(r => r.date === today);
   const doneCount = S.trainItems.filter(x=>x.done).length;
+  
+  if (idx < 0) {
+    S.streak++; DB.set('streak_count', S.streak);
+    S.coachExp += 20;
+    if (S.streak > 1 && S.streak % 7 === 0) { S.coachExp += 50; showToast('連続達成ボーナス+50EXP!'); }
+  } else {
+    S.coachExp += 5;
+  }
+  
+  if (S.coachExp >= 100) {
+    S.coachLevel++; S.coachExp -= 100;
+    setTimeout(()=>{ triggerConfetti(); showToast(`🎉 AIコーチがLv.${S.coachLevel}にレベルアップ！`); }, 1000);
+  }
+  DB.set('coach_level', S.coachLevel); DB.set('coach_exp', S.coachExp);
+  updateMetaUI();
+
   const rec = {
     date: today, weight: S.weight, fat: S.fat, steps: S.steps,
     meals: JSON.parse(JSON.stringify(S.meals)),
@@ -294,6 +341,7 @@ function saveRecord() {
   DB.set('records', S.records);
   showToast('保存しました');
   updateDeltas();
+  updateBodyStatus();
 }
 
 // ═══ Send to AI ═══
@@ -335,9 +383,16 @@ function sendToAI() {
   const doneCount = S.trainItems.filter(x=>x.done).length;
   const trainStatus = S.trainItems.length ? S.trainItems.map(t=>`${t.done?'[済]':'[未]'} ${t.text}`).join('\n') : '未設定';
 
+  let toneStr = "冷静で専門的なトーン";
+  if (S.coachLevel >= 15) toneStr = "最高に熱い情熱と、絶対の信頼を寄せる親友のような口調";
+  else if (S.coachLevel >= 10) toneStr = "非常にフレンドリーで、少しフランクで感情豊かな口調";
+  else if (S.coachLevel >= 5) toneStr = "親しみやすく、優しく励ましてくれる温かいトーン";
+  else if (S.coachLevel >= 2) toneStr = "丁寧だが少し親しみの湧くトーン";
+
   const prompt = `あなたは最高峰のパーソナルトレーナー兼管理栄養士です。
 
 【ルール】
+・ユーザーとの親密度（Lv.${S.coachLevel}）に合わせて、${toneStr}で回答すること。親密度が高いほど労いや褒め言葉を増やすこと。
 ・過去データを分析し、最適なトレーニングメニューと食事アドバイスを出す
 ・利用可能な器具のみでメニューを組む
 ・目標に合わせた負荷設定
@@ -592,6 +647,17 @@ function importData(e) {
 // ═══ Utils ═══
 function showToast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._to);t._to=setTimeout(()=>t.classList.remove('show'),2400)}
 function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+function triggerConfetti() {
+  if (typeof confetti !== 'function') return;
+  const duration = 2000;
+  const end = Date.now() + duration;
+  const colors = ['#f0b90b', '#03c076', '#1890ff', '#e84142', '#ffffff'];
+  (function frame() {
+    confetti({ particleCount: 5, angle: 60, spread: 55, origin: { x: 0 }, colors: colors });
+    confetti({ particleCount: 5, angle: 120, spread: 55, origin: { x: 1 }, colors: colors });
+    if (Date.now() < end) requestAnimationFrame(frame);
+  }());
+}
 
 // ═══ Body Status (Meters) ═══
 function updateBodyStatus() {
@@ -648,6 +714,23 @@ function updateBodyStatus() {
     document.getElementById('fat-val').textContent = '--';
     document.getElementById('fat-text').textContent = '--';
     document.getElementById('fat-pointer').style.left = '0%';
+  }
+
+  // Goal Progress
+  const tw = parseFloat(S.settings.targetWeight);
+  // Get oldest record weight as start, else current
+  const startW = S.records.length > 0 ? parseFloat(S.records[0].weight) : w;
+  if (w && tw && startW && tw !== startW) {
+    const totalDiff = Math.abs(startW - tw);
+    const currDiff = Math.abs(w - tw);
+    const percent = Math.max(0, Math.min(100, ((totalDiff - currDiff) / totalDiff) * 100));
+    document.getElementById('goal-diff').textContent = Math.abs(w - tw).toFixed(1);
+    document.getElementById('goal-percent').textContent = percent.toFixed(1) + '%';
+    document.getElementById('goal-progress-bar').style.width = percent + '%';
+  } else if (w && tw) {
+    document.getElementById('goal-diff').textContent = Math.abs(w - tw).toFixed(1);
+    document.getElementById('goal-percent').textContent = '--%';
+    document.getElementById('goal-progress-bar').style.width = '0%';
   }
 }
 
