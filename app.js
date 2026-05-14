@@ -1,3 +1,20 @@
+// ═══ Auto Update Check (Silent) ═══
+(async function checkUpdate() {
+  try {
+    const url = window.location.href.split('?')[0];
+    const res = await fetch(url, { cache: 'no-cache', method: 'HEAD' });
+    const remoteVer = res.headers.get('etag') || res.headers.get('last-modified');
+    const localVer = localStorage.getItem('app_version_etag');
+    if (remoteVer && localVer !== remoteVer) {
+      localStorage.setItem('app_version_etag', remoteVer);
+      if (localVer) {
+        // 古いバージョンを持っていた場合、最新版を強制読み込み
+        window.location.href = url + '?t=' + new Date().getTime();
+      }
+    }
+  } catch(e) { console.log('Update check skipped'); }
+})();
+
 // ═══ Storage ═══
 const DB = {
   get(k, d) { try { const v = localStorage.getItem(k); return v !== null ? JSON.parse(v) : d; } catch { return d; } },
@@ -733,6 +750,13 @@ function importData(e) {
     } catch(err) { showToast('ファイル形式が不正です'); }
   };
   reader.readAsText(file);
+}
+
+function forceUpdateApp() {
+  if ('caches' in window) {
+    caches.keys().then(names => Promise.all(names.map(name => caches.delete(name))));
+  }
+  window.location.href = window.location.pathname + '?t=' + new Date().getTime();
 }
 
 // ═══ Utils ═══
