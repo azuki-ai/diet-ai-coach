@@ -4,6 +4,17 @@ const DB = {
   set(k, v) { localStorage.setItem(k, JSON.stringify(v)); }
 };
 
+// ═══ Date Change Reset ═══
+const todayStr = new Date().toISOString().slice(0,10);
+const lastDate = DB.get('last_date', todayStr);
+if (lastDate !== todayStr) {
+  // 日付が変わったら、その日の記録用の一時データをクリア（トレーニングメニューは翌日用なので残す）
+  ['t_weight', 't_fat', 't_steps', 't_extra', 't_meals', 't_aiResp', 't_aiAdvice'].forEach(k => localStorage.removeItem(k));
+  DB.set('last_date', todayStr);
+} else if (!localStorage.getItem('last_date')) {
+  DB.set('last_date', todayStr);
+}
+
 // ═══ State ═══
 const S = {
   weight: DB.get('t_weight', ''),
