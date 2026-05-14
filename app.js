@@ -1,0 +1,420 @@
+// ═══ Storage ═══
+const DB = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v !== null ? JSON.parse(v) : d; } catch { return d; } },
+  set(k, v) { localStorage.setItem(k, JSON.stringify(v)); }
+};
+
+// ═══ State ═══
+const S = {
+  weight: DB.get('t_weight', ''),
+  fat: DB.get('t_fat', ''),
+  steps: DB.get('t_steps', ''),
+  extraTraining: DB.get('t_extra', ''),
+  meals: DB.get('t_meals', { breakfast:{food:'',p:'',f:'',c:''}, lunch:{food:'',p:'',f:'',c:''}, dinner:{food:'',p:'',f:'',c:''}, snack:{food:'',p:'',f:'',c:''} }),
+  activeMeal: 'breakfast',
+  trainItems: DB.get('t_train', []),   // [{text,done}]
+  aiResponse: DB.get('t_aiResp', ''),
+  aiAdvice: DB.get('t_aiAdvice', ''),
+  selectedAI: DB.get('sel_ai', 'chatgpt'),
+  records: DB.get('records', []),
+  settings: DB.get('settings', { name:'', age:'', height:'', targetWeight:'', equipment:['bodyweight','dumbbells','pullup'], goal:'recomp', activityLevel:'moderate', geminiKey:'', openaiKey:'' }),
+  graphPeriod: 30,
+  waitingForAI: false,
+};
+
+// ═══ Nav ═══
+function navTo(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.dataset.page === page));
+  document.querySelectorAll('.nav-item,.sidebar-link,.tab').forEach(n => n.classList.toggle('active', n.dataset.nav === page));
+  if (page === 'graph') renderGraphs();
+  if (page === 'settings') renderSettings();
+}
+
+// ═══ Init ═══
+document.addEventListener('DOMContentLoaded', () => {
+  // Date
+  const now = new Date();
+  const days = ['日','月','火','水','木','金','土'];
+  const el = document.getElementById('topbar-date');
+  if (el) el.textContent = `${now.getFullYear()}/${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')} (${days[now.getDay()]})`;
+
+  // Bind body inputs
+  bindVal('inp-weight', 'weight', 't_weight');
+  bindVal('inp-fat', 'fat', 't_fat');
+  bindVal('inp-steps', 'steps', 't_steps');
+  bindTA('inp-extra-training', 'extraTraining', 't_extra');
+
+  // AI response textarea
+  const aiTA = document.getElementById('ai-response');
+  if (aiTA) { aiTA.value = S.aiResponse; aiTA.addEventListener('input', () => { S.aiResponse = aiTA.value; DB.set('t_aiResp', aiTA.value); }); }
+
+  // Meal tabs
+  document.querySelectorAll('.meal-tab').forEach(t => t.addEventListener('click', () => {
+    S.activeMeal = t.dataset.meal;
+    document.querySelectorAll('.meal-tab').forEach(x => x.classList.toggle('active', x.dataset.meal === S.activeMeal));
+    renderMeal();
+  }));
+  ['meal-food','meal-p','meal-f','meal-c'].forEach(id => {
+    const e = document.getElementById(id);
+    if (e) e.addEventListener('input', saveMeal);
+  });
+  renderMeal();
+  renderPFC();
+  renderTrainList();
+  renderAIAdvice();
+
+  // AI chips
+  document.querySelectorAll('.ai-chip').forEach(c => {
+    c.classList.toggle('active', c.dataset.ai === S.selectedAI);
+    c.addEventListener('click', () => {
+      S.selectedAI = c.dataset.ai; DB.set('sel_ai', S.selectedAI);
+      document.querySelectorAll('.ai-chip').forEach(x => x.classList.toggle('active', x.dataset.ai === S.selectedAI));
+    });
+  });
+
+  // Settings
+  document.querySelectorAll('.equip-btn').forEach(b => b.addEventListener('click', () => toggleEquip(b.dataset.equip)));
+  document.querySelectorAll('.goal-btn').forEach(b => b.addEventListener('click', () => setGoal(b.dataset.goal)));
+  document.querySelectorAll('.period-btn').forEach(b => b.addEventListener('click', () => { S.graphPeriod = +b.dataset.period; renderGraphs(); }));
+
+  ['name','age','height'].forEach(k => bindSetting('set-'+k, k));
+  bindSetting('set-target', 'targetWeight');
+  bindSetting('set-gemini-key', 'geminiKey');
+  bindSetting('set-openai-key', 'openaiKey');
+  const act = document.getElementById('set-activity');
+  if (act) { act.value = S.settings.activityLevel; act.addEventListener('change', () => { S.settings.activityLevel = act.value; saveSets(); }); }
+
+  updateDeltas();
+});
+
+function bindVal(id, key, dbKey) {
+  const el = document.getElementById(id); if (!el) return;
+  el.value = S[key];
+  el.addEventListener('input', () => { S[key] = el.value; DB.set(dbKey, el.value); });
+}
+function bindTA(id, key, dbKey) {
+  const el = document.getElementById(id); if (!el) return;
+  el.value = S[key];
+  el.addEventListener('input', () => { S[key] = el.value; DB.set(dbKey, el.value); });
+}
+
+// ═══ Meals ═══
+function renderMeal() {
+  const m = S.meals[S.activeMeal];
+  document.getElementById('meal-food').value = m.food || '';
+  document.getElementById('meal-p').value = m.p || '';
+  document.getElementById('meal-f').value = m.f || '';
+  document.getElementById('meal-c').value = m.c || '';
+}
+function saveMeal() {
+  S.meals[S.activeMeal] = { food: document.getElementById('meal-food').value, p: document.getElementById('meal-p').value, f: document.getElementById('meal-f').value, c: document.getElementById('meal-c').value };
+  DB.set('t_meals', S.meals);
+  renderPFC();
+}
+function totalPFC() {
+  let p=0,f=0,c=0;
+  Object.values(S.meals).forEach(m => { p+=parseFloat(m.p)||0; f+=parseFloat(m.f)||0; c+=parseFloat(m.c)||0; });
+  return {p,f,c};
+}
+function renderPFC() {
+  const {p,f,c} = totalPFC();
+  const kcal = p*4+f*9+c*4;
+  const pP = kcal ? Math.round(p*4/kcal*100) : 0;
+  const fP = kcal ? Math.round(f*9/kcal*100) : 0;
+  const cP = kcal ? 100-pP-fP : 0;
+  document.getElementById('pfc-p-val').textContent = p.toFixed(0)+'g';
+  document.getElementById('pfc-f-val').textContent = f.toFixed(0)+'g';
+  document.getElementById('pfc-c-val').textContent = c.toFixed(0)+'g';
+  document.getElementById('pfc-bar-p').style.width = pP+'%';
+  document.getElementById('pfc-bar-f').style.width = fP+'%';
+  document.getElementById('pfc-bar-c').style.width = cP+'%';
+  let note = `${Math.round(kcal)} kcal`;
+  if (kcal > 0) {
+    note += ` | P${pP}% F${fP}% C${cP}%\n`;
+    const g = S.settings.goal;
+    if (g==='cut') note += pP>=35 ? 'タンパク質十分' : 'もっとタンパク質を';
+    else if (g==='bulk') note += cP>=45 ? '糖質十分' : '糖質を増やそう';
+    else note += (pP>=25&&pP<=35) ? 'バランス良好' : 'P25-35%を目指そう';
+  }
+  document.getElementById('pfc-note').textContent = note;
+}
+
+// ═══ Training Checklist ═══
+function renderTrainList() {
+  const list = document.getElementById('train-list');
+  if (!list) return;
+  if (S.trainItems.length === 0) { list.innerHTML = '<div class="empty-state">AIからメニューを取得、または手動追加</div>'; return; }
+  list.innerHTML = S.trainItems.map((item, i) => `
+    <div class="train-item ${item.done?'done':''}">
+      <input type="checkbox" class="train-check" ${item.done?'checked':''} onchange="toggleTrain(${i})">
+      <span class="train-text ${item.done?'done':''}">${esc(item.text)}</span>
+      <button class="train-del" onclick="delTrain(${i})">x</button>
+    </div>`).join('');
+}
+function toggleTrain(i) { S.trainItems[i].done = !S.trainItems[i].done; DB.set('t_train', S.trainItems); renderTrainList(); }
+function delTrain(i) { S.trainItems.splice(i,1); DB.set('t_train', S.trainItems); renderTrainList(); }
+function addTrainItem() {
+  const inp = document.getElementById('train-add-input');
+  const v = inp.value.trim(); if (!v) return;
+  S.trainItems.push({text:v,done:false}); DB.set('t_train', S.trainItems);
+  inp.value = ''; renderTrainList();
+}
+
+// ═══ AI Response Parse ═══
+function parseAIResponse() {
+  const text = document.getElementById('ai-response').value;
+  if (!text.trim()) { showToast('返答を貼り付けてください'); return; }
+  // Parse training items
+  const lines = text.split('\n');
+  let inTrain = false, items = [], advice = [];
+  for (const line of lines) {
+    const t = line.trim();
+    if (/[■【].*トレーニング|TRAINING/i.test(t)) { inTrain = true; continue; }
+    if (/[■【]/.test(t) && inTrain) { inTrain = false; }
+    if (inTrain && t) {
+      const clean = t.replace(/^[\d]+[.．)）]\s*/,'').replace(/^[・\-\*]\s*/,'');
+      if (clean.length > 1) items.push({text:clean, done:false});
+    }
+    // Collect non-training content as advice
+    if (!inTrain && t && !/^[■【].*トレーニング/.test(t)) advice.push(t);
+  }
+  if (items.length > 0) {
+    S.trainItems = items; DB.set('t_train', S.trainItems); renderTrainList();
+    showToast(items.length + '種目を抽出しました');
+  } else {
+    showToast('トレーニング種目が見つかりません。手動で追加してください');
+  }
+  S.aiAdvice = advice.join('\n'); DB.set('t_aiAdvice', S.aiAdvice);
+  renderAIAdvice();
+}
+function renderAIAdvice() {
+  const el = document.getElementById('ai-advice');
+  if (S.aiAdvice) { el.style.display = 'block'; el.textContent = S.aiAdvice; }
+  else { el.style.display = 'none'; }
+}
+
+// ═══ Save Record ═══
+function saveRecord() {
+  saveMeal();
+  const today = new Date().toISOString().slice(0,10);
+  const idx = S.records.findIndex(r => r.date === today);
+  const doneCount = S.trainItems.filter(x=>x.done).length;
+  const rec = {
+    date: today, weight: S.weight, fat: S.fat, steps: S.steps,
+    meals: JSON.parse(JSON.stringify(S.meals)),
+    trainItems: JSON.parse(JSON.stringify(S.trainItems)),
+    trainDone: S.trainItems.length ? Math.round(doneCount/S.trainItems.length*100) : 0,
+    extraTraining: S.extraTraining,
+  };
+  if (idx >= 0) S.records[idx] = rec; else S.records.push(rec);
+  S.records.sort((a,b) => a.date.localeCompare(b.date));
+  DB.set('records', S.records);
+  showToast('保存しました');
+  updateDeltas();
+}
+
+// ═══ Send to AI ═══
+function sendToAI() {
+  saveMeal();
+  const s = S.settings;
+  const {p,f,c} = totalPFC();
+  const kcal = Math.round(p*4+f*9+c*4);
+  const equipMap = {bodyweight:'自重',dumbbells:'ダンベル×2',pullup:'懸垂機',barbell:'バーベル',bench:'ベンチ',bands:'チューブ'};
+  const goalMap = {bulk:'増量',recomp:'筋肉をつけて痩せる',cut:'減量'};
+  const equip = (s.equipment||[]).map(e=>equipMap[e]||e).join('・');
+
+  // Past 7 days
+  const recs = S.records.slice(-7);
+  let history = '';
+  if (recs.length > 0) {
+    history = '【過去7日間の記録】\n';
+    for (const r of recs) {
+      const mStr = Object.entries(r.meals||{}).map(([k,v])=>{
+        const n={breakfast:'朝',lunch:'昼',dinner:'夜',snack:'間'}[k];
+        return v.food ? `${n}:${v.food}` : '';
+      }).filter(Boolean).join(' / ');
+      const tStr = (r.trainItems||[]).map(t=>`${t.text}${t.done?'[済]':'[未]'}`).join(', ');
+      history += `${r.date}: 体重${r.weight||'-'}kg 体脂肪${r.fat||'-'}% 歩数${r.steps||'-'}\n`;
+      if (mStr) history += `  食事: ${mStr}\n`;
+      if (tStr) history += `  トレーニング: ${tStr} (達成率${r.trainDone||0}%)\n`;
+      if (r.extraTraining) history += `  追加: ${r.extraTraining}\n`;
+    }
+  }
+
+  // Today meal summary
+  const mealStr = Object.entries(S.meals).map(([k,v])=>{
+    const n={breakfast:'朝',lunch:'昼',dinner:'夜',snack:'間食'}[k];
+    return v.food ? `${n}: ${v.food} (P${v.p||0}g F${v.f||0}g C${v.c||0}g)` : '';
+  }).filter(Boolean).join('\n') || '未入力';
+
+  const doneCount = S.trainItems.filter(x=>x.done).length;
+  const trainStatus = S.trainItems.length ? S.trainItems.map(t=>`${t.done?'[済]':'[未]'} ${t.text}`).join('\n') : '未設定';
+
+  const prompt = `あなたは最高峰のパーソナルトレーナー兼管理栄養士です。
+
+【ルール】
+・過去データを分析し、最適なトレーニングメニューと食事アドバイスを出す
+・利用可能な器具のみでメニューを組む
+・目標に合わせた負荷設定
+・必要なことだけ答える
+・毎日1つモチベ知識を入れる
+
+【ユーザー情報】
+名前：${s.name||'未設定'}
+目標：${goalMap[s.goal]||s.goal}
+器具：${equip}
+${s.height?'身長：'+s.height+'cm':''}${s.age?' 年齢：'+s.age+'歳':''}${s.targetWeight?' 目標体重：'+s.targetWeight+'kg':''}
+活動レベル：${s.activityLevel}
+
+${history}
+【今日の情報】
+体重：${S.weight||'未入力'}kg
+体脂肪率：${S.fat||'未入力'}%
+歩数：${S.steps||'未入力'}歩
+食事：
+${mealStr}
+PFC合計：P${p.toFixed(0)}g / F${f.toFixed(0)}g / C${c.toFixed(0)}g（${kcal}kcal）
+トレーニング実施状況：
+${trainStatus}
+${S.extraTraining?'追加トレーニング：'+S.extraTraining:''}
+
+【出力形式 - 以下の形式を厳守】
+■トレーニング（明日のメニュー）
+1. 種目名 負荷×回数×セット数
+2. ...
+
+■食事アドバイス
+朝:
+昼:
+夜:
+間食:
+
+■改善点
+・
+
+■今日の知識
+・`;
+
+  const btn = document.getElementById('btn-send');
+  btn.disabled = true;
+  btn.textContent = '取得中...';
+
+  const aiType = S.selectedAI; // 'chatgpt' or 'gemini' or 'claude'
+  
+  if (aiType === 'claude') {
+    showToast('Claude APIは現在未対応です。GeminiかChatGPTを選択してください');
+    btn.disabled = false; btn.textContent = 'SEND TO AI';
+    return;
+  }
+
+  const key = aiType === 'gemini' ? S.settings.geminiKey : S.settings.openaiKey;
+  if (!key) {
+    showToast(`設定タブで${aiType}のAPIキーを入力してください`);
+    navTo('settings');
+    btn.disabled = false; btn.textContent = 'SEND TO AI';
+    return;
+  }
+
+  fetchAI(aiType, key, prompt).then(res => {
+    document.getElementById('ai-response').value = res;
+    S.aiResponse = res; DB.set('t_aiResp', res);
+    parseAIResponse();
+    showToast('AIの返答を取得・解析しました');
+  }).catch(err => {
+    console.error(err);
+    showToast('AI取得エラー: ' + err.message);
+  }).finally(() => {
+    btn.disabled = false; btn.textContent = 'SEND TO AI';
+  });
+}
+
+async function fetchAI(type, key, prompt) {
+  if (type === 'gemini') {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`;
+    const req = {
+      contents: [{parts:[{text:prompt}]}]
+    };
+    const res = await fetch(url, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req)
+    });
+    if(!res.ok) throw new Error(res.statusText);
+    const data = await res.json();
+    return data.candidates[0].content.parts[0].text;
+  } else if (type === 'chatgpt') {
+    const url = 'https://api.openai.com/v1/chat/completions';
+    const req = {
+      model: 'gpt-4o-mini',
+      messages: [{role:'user', content:prompt}]
+    };
+    const res = await fetch(url, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer '+key },
+      body: JSON.stringify(req)
+    });
+    if(!res.ok) throw new Error(res.statusText);
+    const data = await res.json();
+    return data.choices[0].message.content;
+  }
+}
+
+function fbCopy(t){const a=document.createElement('textarea');a.value=t;a.style.cssText='position:fixed;opacity:0';document.body.appendChild(a);a.select();document.execCommand('copy');document.body.removeChild(a)}
+
+// ═══ Deltas ═══
+function updateDeltas() {
+  const last = S.records.length >= 1 ? S.records[S.records.length-1] : null;
+  setDelta('delta-weight', S.weight, last?.weight, 'kg');
+  setDelta('delta-fat', S.fat, last?.fat, '%');
+}
+function setDelta(id,cur,prev,u){
+  const el=document.getElementById(id);if(!el)return;
+  if(!cur||!prev){el.textContent='--';el.className='metric-delta flat';return}
+  const d=parseFloat(cur)-parseFloat(prev);
+  el.textContent=(d>0?'+':'')+d.toFixed(1)+u;
+  el.className='metric-delta '+(d===0?'flat':d>0?'up':'down');
+}
+
+// ═══ Graphs (SVG) ═══
+function renderGraphs() {
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-S.graphPeriod+1);
+  const ck = cutoff.toISOString().slice(0,10);
+  const recs = S.records.filter(r=>r.date>=ck);
+  document.querySelectorAll('.period-btn').forEach(b=>b.classList.toggle('active',+b.dataset.period===S.graphPeriod));
+  renderBar('chart-weight', recs.map(r=>({l:r.date.slice(5),v:parseFloat(r.weight)||null})), '#f0b90b');
+  renderBar('chart-fat', recs.map(r=>({l:r.date.slice(5),v:parseFloat(r.fat)||null})), '#1890ff');
+  renderBar('chart-steps', recs.map(r=>({l:r.date.slice(5),v:parseFloat(r.steps)||null})), '#03c076');
+}
+function renderBar(id,data,color){
+  const c=document.getElementById(id);if(!c)return;
+  const f=data.filter(d=>d.v!==null);
+  if(!f.length){c.innerHTML='<div class="empty-state">No data</div>';return}
+  const W=Math.max(data.length*32,c.clientWidth||320),H=130,PB=26,PT=14,PL=40,PR=8;
+  const vals=f.map(d=>d.v),mn=Math.min(...vals),mx=Math.max(...vals),rng=mx-mn||1;
+  const bw=Math.max((W-PL-PR)/data.length-4,8);
+  let svg='';
+  for(let i=0;i<=3;i++){const v=mn+rng*i/3,y=H-PB-(v-mn)/rng*(H-PB-PT);svg+=`<text x="${PL-4}" y="${y+3}" text-anchor="end" fill="#5e6673" font-size="9">${v.toFixed(v>1000?0:1)}</text><line x1="${PL}" y1="${y}" x2="${W-PR}" y2="${y}" stroke="#2b3139" stroke-width=".5"/>`}
+  data.forEach((d,i)=>{const x=PL+i*((W-PL-PR)/data.length)+((W-PL-PR)/data.length-bw)/2;if(d.v!==null){const bh=Math.max((d.v-mn)/rng*(H-PB-PT),3),y=H-PB-bh;svg+=`<rect x="${x}" y="${y}" width="${bw}" rx="3" height="${bh}" fill="${color}" opacity=".85"/>`}if(i%Math.ceil(data.length/7)===0)svg+=`<text x="${x+bw/2}" y="${H-5}" text-anchor="middle" fill="#5e6673" font-size="9">${d.l}</text>`});
+  c.innerHTML=`<div class="chart-wrap"><svg class="chart-svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${svg}</svg></div>`;
+}
+
+// ═══ Settings ═══
+function renderSettings(){
+  const s=S.settings;
+  document.getElementById('set-name').value=s.name||'';
+  document.getElementById('set-age').value=s.age||'';
+  document.getElementById('set-height').value=s.height||'';
+  document.getElementById('set-target').value=s.targetWeight||'';
+  document.getElementById('set-activity').value=s.activityLevel||'moderate';
+  document.getElementById('set-gemini-key').value=s.geminiKey||'';
+  document.getElementById('set-openai-key').value=s.openaiKey||'';
+  document.querySelectorAll('.equip-btn').forEach(b=>b.classList.toggle('active',(s.equipment||[]).includes(b.dataset.equip)));
+  document.querySelectorAll('.goal-btn').forEach(b=>b.classList.toggle('active',b.dataset.goal===s.goal));
+}
+function bindSetting(id,key){const el=document.getElementById(id);if(!el)return;el.addEventListener('change',()=>{S.settings[key]=el.value;saveSets()})}
+function saveSets(){DB.set('settings',S.settings)}
+function toggleEquip(e){const a=S.settings.equipment||[];const i=a.indexOf(e);if(i>=0)a.splice(i,1);else a.push(e);S.settings.equipment=a;saveSets();document.querySelectorAll('.equip-btn').forEach(b=>b.classList.toggle('active',a.includes(b.dataset.equip)))}
+function setGoal(g){S.settings.goal=g;saveSets();document.querySelectorAll('.goal-btn').forEach(b=>b.classList.toggle('active',b.dataset.goal===g))}
+
+// ═══ Utils ═══
+function showToast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._to);t._to=setTimeout(()=>t.classList.remove('show'),2400)}
+function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+

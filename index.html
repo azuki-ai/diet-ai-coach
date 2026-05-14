@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="theme-color" content="#0b0e11">
+<title>TRAINING AI</title>
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- Sidebar (PC) -->
+<aside class="sidebar">
+  <div class="sidebar-logo">TRAINING AI</div>
+  <nav class="sidebar-nav">
+    <div class="sidebar-link active" data-nav="today" onclick="navTo('today')"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>TODAY</div>
+    <div class="sidebar-link" data-nav="graph" onclick="navTo('graph')"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>GRAPH</div>
+    <div class="sidebar-link" data-nav="settings" onclick="navTo('settings')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>SETTINGS</div>
+  </nav>
+</aside>
+
+<!-- Topbar (Mobile) -->
+<div class="topbar">
+  <div class="topbar-row">
+    <div class="topbar-title">TRAINING AI</div>
+    <div class="topbar-date" id="topbar-date"></div>
+  </div>
+  <div class="tabs">
+    <div class="tab active" data-nav="today" onclick="navTo('today')">TODAY</div>
+    <div class="tab" data-nav="graph" onclick="navTo('graph')">GRAPH</div>
+    <div class="tab" data-nav="settings" onclick="navTo('settings')">SETTINGS</div>
+  </div>
+</div>
+
+<!-- ══ TODAY ══ -->
+<div class="page active" data-page="today">
+  <div class="today-grid">
+    <div class="today-left">
+      <!-- Body Metrics -->
+      <div class="section">
+        <div class="card-title">BODY METRICS</div>
+        <div class="metric-grid">
+          <div class="metric-box">
+            <div class="metric-label">Weight</div>
+            <input type="number" class="metric-input" id="inp-weight" placeholder="--" step="0.1">
+            <div class="metric-unit">kg</div>
+            <div class="metric-delta flat" id="delta-weight">--</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-label">Body Fat</div>
+            <input type="number" class="metric-input" id="inp-fat" placeholder="--" step="0.1">
+            <div class="metric-unit">%</div>
+            <div class="metric-delta flat" id="delta-fat">--</div>
+          </div>
+        </div>
+      </div>
+      <!-- Steps -->
+      <div class="section">
+        <div class="card-title">STEPS</div>
+        <div class="field"><input type="number" id="inp-steps" placeholder="0"></div>
+      </div>
+      <!-- Meal -->
+      <div class="section">
+        <div class="card-title">MEAL</div>
+        <div class="meal-tabs">
+          <div class="meal-tab active" data-meal="breakfast">朝</div>
+          <div class="meal-tab" data-meal="lunch">昼</div>
+          <div class="meal-tab" data-meal="dinner">夜</div>
+          <div class="meal-tab" data-meal="snack">間食</div>
+        </div>
+        <div class="field"><label>FOOD</label><textarea id="meal-food" rows="2" placeholder="例: 鶏むね弁当、サラダ"></textarea></div>
+        <div class="input-row-3">
+          <div class="field"><label>P (g)</label><input type="number" id="meal-p" placeholder="0"></div>
+          <div class="field"><label>F (g)</label><input type="number" id="meal-f" placeholder="0"></div>
+          <div class="field"><label>C (g)</label><input type="number" id="meal-c" placeholder="0"></div>
+        </div>
+      </div>
+      <!-- PFC -->
+      <div class="section" id="pfc-section">
+        <div class="card-title">PFC BALANCE</div>
+        <div class="pfc-totals">
+          <div class="pfc-box p"><div class="val" id="pfc-p-val">0g</div><div class="lbl">Protein</div></div>
+          <div class="pfc-box f"><div class="val" id="pfc-f-val">0g</div><div class="lbl">Fat</div></div>
+          <div class="pfc-box c"><div class="val" id="pfc-c-val">0g</div><div class="lbl">Carbs</div></div>
+        </div>
+        <div class="pfc-bar">
+          <div class="pfc-p" id="pfc-bar-p" style="width:0"></div>
+          <div class="pfc-f" id="pfc-bar-f" style="width:0"></div>
+          <div class="pfc-c" id="pfc-bar-c" style="width:0"></div>
+        </div>
+        <div class="pfc-legend"><span><i class="dot dot-p"></i>P</span><span><i class="dot dot-f"></i>F</span><span><i class="dot dot-c"></i>C</span></div>
+        <div class="pfc-note" id="pfc-note">PFCを入力すると自動集計</div>
+      </div>
+    </div>
+    <div class="today-right">
+      <!-- AI Training -->
+      <div class="section">
+        <div class="card-title">TRAINING MENU (AI)</div>
+        <div class="train-list" id="train-list"></div>
+        <div class="train-add">
+          <input type="text" id="train-add-input" placeholder="追加トレーニング">
+          <button class="btn btn-ghost btn-sm" onclick="addTrainItem()">+</button>
+        </div>
+        <div class="field" style="margin-top:10px">
+          <label>EXTRA NOTE</label>
+          <textarea id="inp-extra-training" rows="2" placeholder="自由メモ"></textarea>
+        </div>
+      </div>
+      <!-- AI Paste -->
+      <div class="section">
+        <div class="card-title">AI RESPONSE</div>
+        <div class="ai-paste">
+          <textarea id="ai-response" rows="5" placeholder="「SEND TO AI」を押すと自動で取得します..."></textarea>
+        </div>
+        <button class="btn btn-ghost btn-sm" style="margin-top:6px; display:none;" id="btn-parse" onclick="parseAIResponse()">PARSE</button>
+        <div class="ai-advice" id="ai-advice" style="display:none"></div>
+      </div>
+      <!-- AI Send -->
+      <div class="section">
+        <div class="card-title">AI COACH</div>
+        <div class="ai-chips">
+          <div class="ai-chip" data-ai="chatgpt">ChatGPT</div>
+          <div class="ai-chip" data-ai="gemini">Gemini</div>
+          <div class="ai-chip" data-ai="claude">Claude</div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-ghost" id="btn-save" onclick="saveRecord()">SAVE</button>
+          <button class="btn btn-primary" id="btn-send" onclick="sendToAI()">SEND TO AI</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ GRAPH ══ -->
+<div class="page" data-page="graph">
+  <div class="period-row">
+    <button class="period-btn active" data-period="7">7D</button>
+    <button class="period-btn" data-period="14">14D</button>
+    <button class="period-btn" data-period="30">30D</button>
+    <button class="period-btn" data-period="90">90D</button>
+  </div>
+  <div class="card-title">WEIGHT (kg)</div>
+  <div id="chart-weight" style="margin-bottom:16px"></div>
+  <div class="card-title">BODY FAT (%)</div>
+  <div id="chart-fat" style="margin-bottom:16px"></div>
+  <div class="card-title">STEPS</div>
+  <div id="chart-steps" style="margin-bottom:16px"></div>
+</div>
+
+<!-- ══ SETTINGS ══ -->
+<div class="page" data-page="settings">
+  <div class="setting-group">
+    <div class="setting-group-title">PROFILE</div>
+    <div class="card">
+      <div class="input-row" style="margin-bottom:10px">
+        <div class="field"><label>NAME</label><input type="text" id="set-name" placeholder="Taro"></div>
+        <div class="field"><label>AGE</label><input type="number" id="set-age" placeholder="--"></div>
+      </div>
+      <div class="input-row">
+        <div class="field"><label>HEIGHT (cm)</label><input type="number" id="set-height" placeholder="--"></div>
+        <div class="field"><label>TARGET (kg)</label><input type="number" id="set-target" placeholder="--"></div>
+      </div>
+    </div>
+  </div>
+  <div class="setting-group">
+    <div class="setting-group-title">GOAL</div>
+    <div class="goal-grid">
+      <button class="goal-btn" data-goal="bulk">増量</button>
+      <button class="goal-btn active" data-goal="recomp">リコンプ</button>
+      <button class="goal-btn" data-goal="cut">減量</button>
+    </div>
+  </div>
+  <div class="setting-group">
+    <div class="setting-group-title">EQUIPMENT</div>
+    <div class="equip-grid">
+      <button class="equip-btn active" data-equip="bodyweight">自重</button>
+      <button class="equip-btn active" data-equip="dumbbells">ダンベル</button>
+      <button class="equip-btn active" data-equip="pullup">懸垂機</button>
+      <button class="equip-btn" data-equip="barbell">バーベル</button>
+      <button class="equip-btn" data-equip="bench">ベンチ</button>
+      <button class="equip-btn" data-equip="bands">チューブ</button>
+    </div>
+  </div>
+  <div class="setting-group">
+    <div class="setting-group-title">ACTIVITY</div>
+    <div class="card"><div class="field"><select id="set-activity">
+      <option value="low">低 (デスクワーク)</option>
+      <option value="moderate" selected>中 (週3-4運動)</option>
+      <option value="high">高 (週5-6運動)</option>
+    </select></div></div>
+  </div>
+  <div class="setting-group">
+    <div class="setting-group-title">AI INTEGRATION (API KEY)</div>
+    <div class="card">
+      <div class="field" style="margin-bottom:10px">
+        <label>GEMINI API KEY (無料枠あり)</label>
+        <input type="password" id="set-gemini-key" placeholder="Google AI Studioで取得">
+      </div>
+      <div class="field">
+        <label>OPENAI API KEY (ChatGPT用)</label>
+        <input type="password" id="set-openai-key" placeholder="sk-...">
+      </div>
+      <div style="font-size:11px;color:#5e6673;margin-top:6px;line-height:1.4;">
+        ※キーはブラウザにのみ保存されます。GitHubに公開しても安全です。
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Bottom Nav (Mobile) -->
+<nav class="bottom-nav">
+  <div class="nav-item active" data-nav="today" onclick="navTo('today')">
+    <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>TODAY
+  </div>
+  <div class="nav-item" data-nav="graph" onclick="navTo('graph')">
+    <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>GRAPH
+  </div>
+  <div class="nav-item" data-nav="settings" onclick="navTo('settings')">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>SETTINGS
+  </div>
+</nav>
+
+<div class="toast" id="toast"></div>
+<script src="app.js"></script>
+</body>
+</html>
