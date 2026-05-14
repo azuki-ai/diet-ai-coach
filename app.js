@@ -17,7 +17,7 @@ const S = {
   aiAdvice: DB.get('t_aiAdvice', ''),
   selectedAI: DB.get('sel_ai', 'chatgpt'),
   records: DB.get('records', []),
-  settings: DB.get('settings', { name:'', age:'', height:'', targetWeight:'', equipment:['bodyweight','dumbbells','pullup'], goal:'recomp', activityLevel:'moderate', geminiKey:'', openaiKey:'' }),
+  settings: DB.get('settings', { name:'', age:'', height:'', targetWeight:'', equipment:['bodyweight','dumbbells','pullup'], goal:'recomp', activityLevel:'moderate', geminiKey:'', openaiKey:'', gender:'male' }),
   graphPeriod: 30,
   waitingForAI: false,
 };
@@ -79,18 +79,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
   ['name','age','height'].forEach(k => bindSetting('set-'+k, k));
   bindSetting('set-target', 'targetWeight');
+  bindSetting('set-gender', 'gender');
   bindSetting('set-gemini-key', 'geminiKey');
   bindSetting('set-openai-key', 'openaiKey');
   const act = document.getElementById('set-activity');
   if (act) { act.value = S.settings.activityLevel; act.addEventListener('change', () => { S.settings.activityLevel = act.value; saveSets(); }); }
 
   updateDeltas();
+  updateBodyStatus();
 });
 
 function bindVal(id, key, dbKey) {
   const el = document.getElementById(id); if (!el) return;
   el.value = S[key];
-  el.addEventListener('input', () => { S[key] = el.value; DB.set(dbKey, el.value); });
+  el.addEventListener('input', () => { 
+    S[key] = el.value; 
+    DB.set(dbKey, el.value); 
+    if(key==='weight'||key==='fat') updateBodyStatus();
+  });
 }
 function bindTA(id, key, dbKey) {
   const el = document.getElementById(id); if (!el) return;
@@ -295,7 +301,7 @@ function sendToAI() {
 ・毎日1つモチベ知識を入れる
 
 【ユーザー情報】
-名前：${s.name||'未設定'}
+名前：${s.name||'未設定'} (${s.gender==='female'?'女性':'男性'})
 目標：${goalMap[s.goal]||s.goal}
 器具：${equip}
 ${s.height?'身長：'+s.height+'cm':''}${s.age?' 年齢：'+s.age+'歳':''}${s.targetWeight?' 目標体重：'+s.targetWeight+'kg':''}
@@ -453,6 +459,7 @@ function renderSettings(){
   document.getElementById('set-height').value=s.height||'';
   document.getElementById('set-target').value=s.targetWeight||'';
   document.getElementById('set-activity').value=s.activityLevel||'moderate';
+  document.getElementById('set-gender').value=s.gender||'male';
   document.getElementById('set-gemini-key').value=s.geminiKey||'';
   document.getElementById('set-openai-key').value=s.openaiKey||'';
   document.querySelectorAll('.equip-btn').forEach(b=>b.classList.toggle('active',(s.equipment||[]).includes(b.dataset.equip)));
@@ -466,4 +473,63 @@ function setGoal(g){S.settings.goal=g;saveSets();document.querySelectorAll('.goa
 // ═══ Utils ═══
 function showToast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._to);t._to=setTimeout(()=>t.classList.remove('show'),2400)}
 function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+
+// ═══ Body Status (Meters) ═══
+function updateBodyStatus() {
+  const st = document.getElementById('body-status');
+  if (!st) return;
+  const h = parseFloat(S.settings.height);
+  const w = parseFloat(S.weight);
+  const f = parseFloat(S.fat);
+  const g = S.settings.gender || 'male';
+
+  if (!w || (!h && !f)) { st.style.display = 'none'; return; }
+  st.style.display = 'block';
+
+  // BMI
+  if (w && h) {
+    const hm = h / 100;
+    const bmi = w / (hm * hm);
+    document.getElementById('bmi-val').textContent = bmi.toFixed(1);
+    let text = '', left = 0;
+    if (bmi < 18.5) text = '低体重';
+    else if (bmi < 25) text = '普通体重';
+    else if (bmi < 30) text = '肥満(1度)';
+    else text = '肥満(2度以上)';
+    document.getElementById('bmi-text').textContent = text;
+    // Map BMI 15-35 to 0-100%
+    left = ((bmi - 15) / 20) * 100;
+    document.getElementById('bmi-pointer').style.left = Math.max(0, Math.min(100, left)) + '%';
+  } else {
+    document.getElementById('bmi-val').textContent = '--';
+    document.getElementById('bmi-text').textContent = '--';
+    document.getElementById('bmi-pointer').style.left = '0%';
+  }
+
+  // Fat
+  if (f) {
+    document.getElementById('fat-val').textContent = f.toFixed(1);
+    let text = '', left = 0;
+    if (g === 'male') {
+      if (f < 10) text = '低い(アスリート)';
+      else if (f < 20) text = '標準';
+      else if (f < 25) text = 'やや高い(軽度肥満)';
+      else text = '高い(肥満)';
+      left = ((f - 5) / 30) * 100; // map 5-35 to 0-100
+    } else {
+      if (f < 20) text = '低い(アスリート)';
+      else if (f < 30) text = '標準';
+      else if (f < 35) text = 'やや高い(軽度肥満)';
+      else text = '高い(肥満)';
+      left = ((f - 15) / 30) * 100; // map 15-45 to 0-100
+    }
+    document.getElementById('fat-text').textContent = text;
+    document.getElementById('fat-pointer').style.left = Math.max(0, Math.min(100, left)) + '%';
+  } else {
+    document.getElementById('fat-val').textContent = '--';
+    document.getElementById('fat-text').textContent = '--';
+    document.getElementById('fat-pointer').style.left = '0%';
+  }
+}
+
 
