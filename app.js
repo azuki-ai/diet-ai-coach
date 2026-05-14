@@ -393,7 +393,14 @@ function saveRecord() {
 }
 
 // ═══ Send to AI ═══
+function saveAndSendAI() {
+  saveRecord();
+  sendToAI();
+}
+
 function sendToAI() {
+  const btn = document.getElementById('btn-save-send');
+  if (btn) { btn.disabled = true; btn.textContent = '保存＆取得中...'; }
   saveMeal();
   const s = S.settings;
   const {p,f,c} = totalPFC();
@@ -493,15 +500,11 @@ ${S.extraTraining?'追加トレーニング：'+S.extraTraining:''}
 ■今日の知識
 ・`;
 
-  const btn = document.getElementById('btn-send');
-  btn.disabled = true;
-  btn.textContent = '取得中...';
-
   const aiType = S.selectedAI; // 'chatgpt' or 'gemini' or 'claude'
   
   if (aiType === 'claude') {
     showToast('Claude APIは現在未対応です。GeminiかChatGPTを選択してください');
-    btn.disabled = false; btn.textContent = 'SEND TO AI';
+    if (btn) { btn.disabled = false; btn.textContent = 'SAVE & SEND TO AI'; }
     return;
   }
 
@@ -509,7 +512,7 @@ ${S.extraTraining?'追加トレーニング：'+S.extraTraining:''}
   if (!key) {
     showToast(`設定タブで${aiType}のAPIキーを入力してください`);
     navTo('settings');
-    btn.disabled = false; btn.textContent = 'SEND TO AI';
+    if (btn) { btn.disabled = false; btn.textContent = 'SAVE & SEND TO AI'; }
     return;
   }
 
@@ -522,9 +525,10 @@ ${S.extraTraining?'追加トレーニング：'+S.extraTraining:''}
     document.getElementById('ai-image-name').textContent = '';
   }).catch(err => {
     console.error(err);
+    if (btn) { btn.disabled = false; btn.textContent = 'SAVE & SEND TO AI'; }
     showToast('AI取得エラー: ' + (err.message || '不明なエラー'));
   }).finally(() => {
-    btn.disabled = false; btn.textContent = 'SEND TO AI';
+    if (btn) { btn.disabled = false; btn.textContent = 'SAVE & SEND TO AI'; }
   });
 }
 
