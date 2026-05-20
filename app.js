@@ -50,7 +50,24 @@ const MUSCLE_GROUPS = {
   forearms:{ label:'前腕', sub:'前腕屈筋群', size:'small', hours:24 }
 };
 
-// ═══ ⑥ Exercise Guide Data (Text/Image banned by user, using YouTube search instead) ═══
+// ═══ ⑥ Exercise Video Data ═══
+const VIDEO_MAP = {
+  'プッシュアップ': 'IODxDxX7oi4', '腕立て': 'IODxDxX7oi4',
+  'ベンチプレス': 'vUcjOZIxqHI', 'ダンベルフライ': 'w8P13mK4K10', 'チェストプレス': '2d6v8C6X42Y',
+  'スクワット': 'xK9RvVNMCGQ', 'ランジ': 'z49kI-jU19A', 'レッグプレス': '3V3zK4m3A1M',
+  'デッドリフト': 'ytGaGIn3SjE', 'ベントオーバーロウ': '2f4g4V4_32I',
+  '懸垂': 'eGo4IYp7K_U', 'チンニング': 'eGo4IYp7K_U', 'ラットプルダウン': 'D4R1qO70E_Q',
+  'ショルダープレス': 'qEwKCR5JCog', 'サイドレイズ': '3_VpZ-j409c',
+  'アームカール': '0sJ1k-J9z1M', 'ダンベルカール': '0sJ1k-J9z1M', 'トライセプス': '2h3g4V4_32I',
+  'クランチ': 'D8VovqO-hxk', 'シットアップ': 'D8VovqO-hxk', 'レッグレイズ': '2f4g4V4_32I', 'プランク': 'pSHjTRCQxIw'
+};
+
+function getVideoId(text) {
+  for (const [key, id] of Object.entries(VIDEO_MAP)) {
+    if (text.includes(key)) return id;
+  }
+  return null;
+}
 
 // ═══ State ═══
 const S = {
@@ -353,18 +370,29 @@ function renderTrainList() {
   if (!list) return;
   if (S.trainItems.length === 0) { list.innerHTML = '<div class="empty-state">AIからメニューを取得、または手動追加</div>'; return; }
   list.innerHTML = S.trainItems.map((item, i) => {
-    // 種目名だけを抽出してYouTube検索リンクを生成
     const exName = item.text.split(/[ 　\d０-９]/)[0] || item.text;
-    const searchUrl = `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(exName + ' 筋トレ やり方')}`;
+    const vId = getVideoId(item.text);
+    const extSearchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(exName + ' 筋トレ やり方')}`;
+    
+    let btnHtml = '';
+    let frameHtml = '';
+    
+    if (vId) {
+      btnHtml = `<button class="train-info-btn" onclick="toggleVideo(${i})" style="font-size:16px;" title="アプリ内で動画を見る">▶️</button>`;
+      frameHtml = `<div class="exercise-guide" id="video-${i}" style="display:none; padding: 10px 0;">
+        <iframe width="100%" height="200" src="https://www.youtube.com/embed/${vId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="border-radius:8px;"></iframe>
+      </div>`;
+    } else {
+      btnHtml = `<a href="${extSearchUrl}" target="_blank" rel="noopener noreferrer" style="text-decoration:none; margin-right:12px; font-size:18px; filter:grayscale(100%); transition:0.2s;" title="YouTubeで動画を検索する">🔍</a>`;
+    }
+
     return `<div class="train-item ${item.done?'done':''}">
       <input type="checkbox" class="train-check" ${item.done?'checked':''} onchange="toggleTrain(${i})">
       <span class="train-text ${item.done?'done':''}">${esc(item.text)}</span>
-      <button class="train-info-btn" onclick="toggleVideo(${i})" style="font-size:16px;">▶️</button>
+      ${btnHtml}
       <button class="train-del" onclick="delTrain(${i})">x</button>
     </div>
-    <div class="exercise-guide" id="video-${i}" style="display:none; padding: 10px 0;">
-      <iframe width="100%" height="200" src="${searchUrl}" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen style="border-radius:8px;"></iframe>
-    </div>`;
+    ${frameHtml}`;
   }).join('');
 }
 function toggleVideo(i) {
