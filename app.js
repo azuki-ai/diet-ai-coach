@@ -38,15 +38,6 @@ if (lastDate !== todayStr) {
   DB.set('last_date', todayStr);
 }
 
-// ═══ ③ Injury Banned Exercises Mapping ═══
-const INJURY_BAN_MAP = {
-  shoulder: ['ベンチプレス','ショルダープレス','サイドレイズ'],
-  lower_back: ['デッドリフト','スクワット','ベントオーバーロウ'],
-  knee: ['スクワット','レッグプレス','ランジ'],
-  elbow: ['スカルクラッシャー','トリセプス・エクステンション','アームカール','懸垂'],
-  wrist: ['ベンチプレス','バーベルカール','フロントスクワット']
-};
-
 // ═══ ⑧ Super Recovery Config ═══
 const MUSCLE_GROUPS = {
   back:  { label:'背中', sub:'広背筋・僧帽筋', size:'large', hours:72 },
@@ -83,8 +74,6 @@ const S = {
   coins: DB.get('game_coins', 0),
   inventory: DB.get('game_inventory', []),
   boss: DB.get('game_boss', { level: 1, hp: 1000, maxHp: 1000 }),
-  // ③ Injury
-  injuries: DB.get('t_injuries', []),
   // ④ Protein/Supplement
   protein: DB.get('t_protein', ''),
   supplement: DB.get('t_supplement', ''),
@@ -139,7 +128,6 @@ document.addEventListener('DOMContentLoaded', () => {
   renderTrainList();
   renderAIAdvice();
   renderRecoveryGrid();
-  renderInjuryUI();
   renderUserLevel();
 
   document.querySelectorAll('.ai-chip').forEach(c => {
@@ -194,34 +182,6 @@ function bindTA(id, key, dbKey) {
   const el = document.getElementById(id); if (!el) return;
   el.value = S[key];
   el.addEventListener('input', () => { S[key] = el.value; DB.set(dbKey, el.value); });
-}
-
-// ═══ ③ Injury Logic ═══
-function toggleInjury() {
-  const cb = document.getElementById('injury-has');
-  const area = document.getElementById('injury-parts-area');
-  if (cb && area) {
-    area.style.display = cb.checked ? 'block' : 'none';
-    if (!cb.checked) { S.injuries = []; DB.set('t_injuries', S.injuries); renderInjuryUI(); }
-  }
-}
-function toggleInjuryPart(part) {
-  const idx = S.injuries.indexOf(part);
-  if (idx >= 0) S.injuries.splice(idx, 1); else S.injuries.push(part);
-  DB.set('t_injuries', S.injuries);
-  renderInjuryUI();
-}
-function renderInjuryUI() {
-  const cb = document.getElementById('injury-has');
-  const area = document.getElementById('injury-parts-area');
-  if (cb) cb.checked = S.injuries.length > 0;
-  if (area) area.style.display = S.injuries.length > 0 ? 'block' : 'none';
-  document.querySelectorAll('.injury-btn').forEach(b => b.classList.toggle('active', S.injuries.includes(b.dataset.injury)));
-}
-function getBannedExercises() {
-  const banned = new Set();
-  S.injuries.forEach(part => { (INJURY_BAN_MAP[part]||[]).forEach(ex => banned.add(ex)); });
-  return [...banned];
 }
 
 // ═══ ② User Training Level ═══
@@ -395,14 +355,21 @@ function renderTrainList() {
   list.innerHTML = S.trainItems.map((item, i) => {
     // 種目名だけを抽出してYouTube検索リンクを生成
     const exName = item.text.split(/[ 　\d０-９]/)[0] || item.text;
-    const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(exName + ' 筋トレ やり方')}`;
+    const searchUrl = `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(exName + ' 筋トレ やり方')}`;
     return `<div class="train-item ${item.done?'done':''}">
       <input type="checkbox" class="train-check" ${item.done?'checked':''} onchange="toggleTrain(${i})">
       <span class="train-text ${item.done?'done':''}">${esc(item.text)}</span>
-      <a href="${searchUrl}" target="_blank" rel="noopener noreferrer" style="text-decoration:none; margin-right:12px; font-size:18px; filter:grayscale(100%); transition:0.2s;" title="YouTubeで動画を見る">▶️</a>
+      <button class="train-info-btn" onclick="toggleVideo(${i})" style="font-size:16px;">▶️</button>
       <button class="train-del" onclick="delTrain(${i})">x</button>
+    </div>
+    <div class="exercise-guide" id="video-${i}" style="display:none; padding: 10px 0;">
+      <iframe width="100%" height="200" src="${searchUrl}" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen style="border-radius:8px;"></iframe>
     </div>`;
   }).join('');
+}
+function toggleVideo(i) {
+  const el = document.getElementById('video-'+i);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 function toggleTrain(i) {
   S.trainItems[i].done = !S.trainItems[i].done;
@@ -527,8 +494,6 @@ function saveRecord() {
     trainItems: JSON.parse(JSON.stringify(S.trainItems)),
     trainDone: S.trainItems.length ? Math.round(doneCount/S.trainItems.length*100) : 0,
     extraTraining: S.extraTraining,
-    // ③ Injuries
-    injuries: [...S.injuries],
     // ④ Protein/Supplement
     protein: S.protein,
     supplement: S.supplement,
@@ -588,15 +553,6 @@ function sendToAI() {
   const doneCount = S.trainItems.filter(x=>x.done).length;
   const trainStatus = S.trainItems.length ? S.trainItems.map(t=>`${t.done?'[済]':'[未]'} ${t.text}`).join('\n') : '未設定';
 
-  // ③ Injury exclusion prompt
-  const banned = getBannedExercises();
-  let injuryPrompt = '';
-  if (banned.length > 0) {
-    const injuryLabels = { shoulder:'肩', lower_back:'腰', knee:'膝', elbow:'肘', wrist:'手首' };
-    const parts = S.injuries.map(i=>injuryLabels[i]||i).join('・');
-    injuryPrompt = `\n【重要：ケガ・痛みによる制限】\nユーザーは現在「${parts}」に痛みがあります。\n以下の種目は絶対に提案しないでください：${banned.join('、')}\n痛みのある部位には、代わりにストレッチメニューを提案してください。\n`;
-  }
-
   // ⑧ Recovery prompt
   const recInfo = getRecoveryPromptInfo();
   let recoveryPrompt = '';
@@ -608,8 +564,8 @@ function sendToAI() {
 
   // ⑤ Stretch prompt
   let stretchPrompt = '\n【ストレッチ】\nトレーニング前のウォームアップストレッチと、トレーニング後のクールダウンストレッチを各2-3種目提案してください。\n';
-  if (recInfo.stretching.length > 0 || S.injuries.length > 0) {
-    const strParts = [...new Set([...recInfo.stretching, ...S.injuries.map(i=>({shoulder:'肩',lower_back:'腰',knee:'膝',elbow:'肘',wrist:'手首'}[i]||i))])];
+  if (recInfo.stretching.length > 0) {
+    const strParts = [...new Set([...recInfo.stretching])];
     stretchPrompt += `特に「${strParts.join('・')}」については、ウエイトトレーニングの代わりにストレッチメニューを優先提案してください。\n`;
   }
 
@@ -637,7 +593,7 @@ function sendToAI() {
 ・目標に合わせた負荷設定
 ・必要なことだけ答える
 ・毎日1つモチベ知識を入れる
-${injuryPrompt}${recoveryPrompt}${stretchPrompt}${levelPrompt}
+${recoveryPrompt}${stretchPrompt}${levelPrompt}
 【ユーザー情報】
 (${s.gender==='female'?'女性':'男性'})
 目標：${goalMap[s.goal]||s.goal}
