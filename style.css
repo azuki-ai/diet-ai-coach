@@ -3,7 +3,7 @@
   --bg:#0b0e11;--surface:#161a1e;--card:#1e2329;--border:#2b3139;--border2:#363c45;
   --text:#eaecef;--text2:#848e9c;--text3:#5e6673;
   --yellow:#f0b90b;--yellow2:#f8d12f;--yellow-dim:rgba(240,185,11,.12);
-  --green:#03c076;--red:#f6465d;--blue:#1890ff;
+  --green:#03c076;--red:#f6465d;--blue:#1890ff;--orange:#e8912d;
   --radius:6px;--radius2:12px;
 }
 html{font-size:16px}
@@ -57,7 +57,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,san
 .field{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}
 .field:last-child{margin-bottom:0}
 .field label{font-size:.68rem;font-weight:600;color:var(--text2);letter-spacing:.06em;text-transform:uppercase}
-input[type=number],input[type=text],textarea,select{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:10px 12px;font-size:.92rem;font-family:inherit;outline:none;transition:border-color .2s;-webkit-appearance:none}
+input[type=number],input[type=text],input[type=password],textarea,select{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:10px 12px;font-size:.92rem;font-family:inherit;outline:none;transition:border-color .2s;-webkit-appearance:none}
 input:focus,textarea:focus,select:focus{border-color:var(--yellow)}
 ::placeholder{color:var(--text3)}
 textarea{resize:none;line-height:1.5}
@@ -137,6 +137,55 @@ textarea{resize:none;line-height:1.5}
 
 .empty-state{text-align:center;color:var(--text3);font-size:.8rem;padding:24px 0}
 
+/* ═══ Injury Check ═══ */
+.injury-toggle{display:flex;align-items:center;gap:10px;margin-bottom:10px;cursor:pointer}
+.injury-toggle input[type=checkbox]{width:18px;height:18px;accent-color:var(--red)}
+.injury-toggle label{font-size:.85rem;color:var(--text);cursor:pointer}
+.injury-parts{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
+.injury-btn{padding:10px 8px;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface);color:var(--text2);font-size:.72rem;font-weight:600;text-align:center;cursor:pointer;transition:all .2s;font-family:inherit;line-height:1.3}
+.injury-btn.active{border-color:var(--red);background:rgba(246,70,93,.12);color:var(--red)}
+.injury-btn .injury-sub{font-size:.6rem;color:var(--text3);display:block;margin-top:2px}
+.injury-btn.active .injury-sub{color:rgba(246,70,93,.7)}
+
+/* ═══ Supplement Section ═══ */
+.suppl-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+
+/* ═══ Recovery Status ═══ */
+.recovery-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.recovery-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:8px;text-align:center;font-size:.7rem;transition:all .3s}
+.recovery-card .rc-name{font-weight:700;color:var(--text);margin-bottom:4px}
+.recovery-card .rc-bar{height:4px;border-radius:2px;background:var(--border);overflow:hidden;margin:4px 0}
+.recovery-card .rc-fill{height:100%;border-radius:2px;transition:width .4s}
+.recovery-card .rc-label{font-size:.6rem;color:var(--text3)}
+.recovery-card.phase-damage{border-color:var(--red)}
+.recovery-card.phase-damage .rc-fill{background:var(--red)}
+.recovery-card.phase-recovery .rc-fill{background:var(--orange)}
+.recovery-card.phase-peak{border-color:var(--green)}
+.recovery-card.phase-peak .rc-fill{background:var(--green)}
+.recovery-card.phase-decay{border-color:var(--yellow)}
+.recovery-card.phase-decay .rc-fill{background:var(--yellow)}
+.recovery-card.phase-ready .rc-fill{background:var(--text3)}
+
+/* ═══ Training Level ═══ */
+.user-level-bar{display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)}
+.user-level-bar .ulb-lv{font-size:1rem;font-weight:800;color:var(--yellow)}
+.user-level-bar .ulb-bar{flex:1;height:6px;background:var(--border);border-radius:3px;overflow:hidden}
+.user-level-bar .ulb-fill{height:100%;background:linear-gradient(90deg,var(--yellow),var(--green));border-radius:3px;transition:width .4s}
+.user-level-bar .ulb-exp{font-size:.65rem;color:var(--text3)}
+
+/* ═══ Exercise Guide ═══ */
+.exercise-guide{margin-top:6px;padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);font-size:.75rem;color:var(--text2);line-height:1.5;display:none}
+.exercise-guide.open{display:block}
+.exercise-guide img,.exercise-guide iframe{max-width:100%;border-radius:var(--radius);margin-top:6px}
+.train-info-btn{background:none;border:none;color:var(--blue);cursor:pointer;font-size:.72rem;padding:2px 6px}
+
+/* ═══ History Enhanced ═══ */
+.hist-train-list{margin-top:6px;padding:6px 0}
+.hist-train-item{font-size:.75rem;color:var(--text2);padding:2px 0}
+.hist-train-item.done-item{color:var(--green)}
+.hist-train-item.undone-item{color:var(--text3)}
+.hist-suppl{margin-top:4px;font-size:.72rem;color:var(--blue)}
+
 /* ═══ Responsive: Tablet+ ═══ */
 @media(min-width:768px){
   .sidebar{display:flex}
@@ -144,9 +193,12 @@ textarea{resize:none;line-height:1.5}
   .topbar{display:none}
   .page{padding:20px 32px 32px;margin-left:220px}
   .page.active{display:block}
+  .injury-parts{grid-template-columns:repeat(3,1fr)}
+  .recovery-grid{grid-template-columns:repeat(4,1fr)}
 }
 /* ═══ Responsive: Desktop ═══ */
 @media(min-width:1200px){
   .today-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start}
   .page{padding:24px 40px 40px;max-width:1200px}
+  .recovery-grid{grid-template-columns:repeat(5,1fr)}
 }

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://generativelanguage.googleapis.com https://api.openai.com; font-src 'self';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://musclewiki.com https://*.githubusercontent.com https://i.imgur.com; connect-src 'self' https://generativelanguage.googleapis.com https://api.openai.com; font-src 'self'; frame-src https://www.youtube.com https://youtube.com;">
 <meta http-equiv="X-Content-Type-Options" content="nosniff">
 <meta name="referrer" content="no-referrer">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -90,11 +90,32 @@
           </div>
         </div>
       </div>
+
+      <!-- ③ Injury Check -->
+      <div class="section">
+        <div class="card-title">⚠️ INJURY CHECK（ケガ・痛みの確認）</div>
+        <div class="injury-toggle">
+          <input type="checkbox" id="injury-has" onchange="toggleInjury()">
+          <label for="injury-has">現在、痛みや違和感がある</label>
+        </div>
+        <div id="injury-parts-area" style="display:none;">
+          <div style="font-size:.68rem;color:#848e9c;margin-bottom:6px;">痛みのある部位を選択してください</div>
+          <div class="injury-parts">
+            <button class="injury-btn" data-injury="shoulder" onclick="toggleInjuryPart('shoulder')">🦴 肩<span class="injury-sub">ローテーターカフ・腱板</span></button>
+            <button class="injury-btn" data-injury="lower_back" onclick="toggleInjuryPart('lower_back')">🦴 腰<span class="injury-sub">腰椎・脊柱起立筋</span></button>
+            <button class="injury-btn" data-injury="knee" onclick="toggleInjuryPart('knee')">🦴 膝<span class="injury-sub">膝蓋腱・側副靭帯</span></button>
+            <button class="injury-btn" data-injury="elbow" onclick="toggleInjuryPart('elbow')">🦴 肘<span class="injury-sub">内側上顆・外側上顆</span></button>
+            <button class="injury-btn" data-injury="wrist" onclick="toggleInjuryPart('wrist')">🦴 手首<span class="injury-sub">TFCC・腱鞘</span></button>
+          </div>
+        </div>
+      </div>
+
       <!-- Steps -->
       <div class="section">
         <div class="card-title">STEPS</div>
         <div class="field"><input type="number" id="inp-steps" placeholder="0"></div>
       </div>
+
       <!-- Meal -->
       <div class="section">
         <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">
@@ -118,6 +139,16 @@
           <div class="field"><label>C (g)</label><input type="number" id="meal-c" placeholder="0"></div>
         </div>
       </div>
+
+      <!-- ④ Protein & Supplements -->
+      <div class="section">
+        <div class="card-title">💊 PROTEIN & SUPPLEMENTS</div>
+        <div class="suppl-row">
+          <div class="field"><label>プロテイン (g)</label><input type="number" id="inp-protein" placeholder="0" step="1"></div>
+          <div class="field"><label>サプリメント</label><input type="text" id="inp-supplement" placeholder="例: BCAA, クレアチン"></div>
+        </div>
+      </div>
+
       <!-- PFC -->
       <div class="section" id="pfc-section">
         <div class="card-title">DAILY TARGET & PFC</div>
@@ -141,6 +172,23 @@
       </div>
     </div>
     <div class="today-right">
+
+      <!-- ⑧ Recovery Status -->
+      <div class="section">
+        <div class="card-title">💪 RECOVERY STATUS（超回復モニター）</div>
+        <div class="recovery-grid" id="recovery-grid"></div>
+      </div>
+
+      <!-- ② User Training Level -->
+      <div class="section">
+        <div class="card-title">🏆 TRAINING LEVEL</div>
+        <div class="user-level-bar">
+          <div class="ulb-lv">Lv.<span id="user-lv">1</span></div>
+          <div class="ulb-bar"><div class="ulb-fill" id="user-lv-bar" style="width:0%"></div></div>
+          <div class="ulb-exp"><span id="user-exp">0</span>/100 EXP</div>
+        </div>
+      </div>
+
       <!-- AI Training -->
       <div class="section">
         <div class="card-title">TRAINING MENU (AI)</div>
@@ -257,19 +305,16 @@
     <div class="setting-group-title">PROFILE</div>
     <div class="card">
       <div class="input-row" style="margin-bottom:10px">
-        <div class="field"><label>NAME</label><input type="text" id="set-name" placeholder="Taro"></div>
         <div class="field"><label>GENDER</label>
           <select id="set-gender" style="width:100%; padding:8px; border-radius:4px; border:1px solid #2b3139; background:#0b0e11; color:#eaecef;">
             <option value="male">男性</option>
             <option value="female">女性</option>
           </select>
         </div>
+        <div class="field"><label>AGE</label><input type="number" id="set-age" placeholder="--"></div>
       </div>
       <div class="input-row">
         <div class="field"><label>HEIGHT (cm)</label><input type="number" id="set-height" placeholder="--"></div>
-        <div class="field"><label>AGE</label><input type="number" id="set-age" placeholder="--"></div>
-      </div>
-      <div class="input-row" style="margin-top:10px">
         <div class="field"><label>TARGET (kg)</label><input type="number" id="set-target" placeholder="--"></div>
       </div>
     </div>
@@ -324,7 +369,7 @@
     <div class="card">
       <button class="btn btn-ghost" onclick="forceUpdateApp()" style="color:#e84142; border-color:#e84142;">🔄 アプリを最新状態に強制更新（キャッシュクリア）</button>
       <div style="font-size:11px;color:#5e6673;margin-top:6px;line-height:1.4;">
-        ※GitHubでプログラムを更新したのにスマホの画面が変わらない場合、このボタンを押すと古い記憶を破棄して最新版を読み込みます。（ホーム画面から削除する必要がなくなります）
+        ※GitHubでプログラムを更新したのにスマホの画面が変わらない場合、このボタンを押すと古い記憶を破棄して最新版を読み込みます。
       </div>
     </div>
   </div>

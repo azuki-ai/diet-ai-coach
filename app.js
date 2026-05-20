@@ -7,10 +7,7 @@
     const localVer = localStorage.getItem('app_version_etag');
     if (remoteVer && localVer !== remoteVer) {
       localStorage.setItem('app_version_etag', remoteVer);
-      if (localVer) {
-        // 古いバージョンを持っていた場合、最新版を強制読み込み
-        window.location.href = url + '?t=' + new Date().getTime();
-      }
+      if (localVer) { window.location.href = url + '?t=' + new Date().getTime(); }
     }
   } catch(e) { console.log('Update check skipped'); }
 })();
@@ -32,15 +29,37 @@ if (lastDate !== todayStr) {
   if (lastDate) {
     const y = new Date(); y.setDate(y.getDate()-1);
     const yesterday = y.toISOString().slice(0,10);
-    if (lastDate !== yesterday) streak = 0; // Reset streak if missed a day
+    if (lastDate !== yesterday) streak = 0;
   }
-  // 日付が変わったら、その日の記録用の一時データをクリア（トレーニングメニューは翌日用なので残す）
-  ['t_weight', 't_fat', 't_steps', 't_extra', 't_meals', 't_aiResp', 't_aiAdvice'].forEach(k => localStorage.removeItem(k));
+  ['t_weight', 't_fat', 't_steps', 't_extra', 't_meals', 't_aiResp', 't_aiAdvice', 't_protein', 't_supplement'].forEach(k => localStorage.removeItem(k));
   DB.set('last_date', todayStr);
   DB.set('streak_count', streak);
 } else if (!localStorage.getItem('last_date')) {
   DB.set('last_date', todayStr);
 }
+
+// ═══ ③ Injury Banned Exercises Mapping ═══
+const INJURY_BAN_MAP = {
+  shoulder: ['ベンチプレス','ショルダープレス','サイドレイズ'],
+  lower_back: ['デッドリフト','スクワット','ベントオーバーロウ'],
+  knee: ['スクワット','レッグプレス','ランジ'],
+  elbow: ['スカルクラッシャー','トリセプス・エクステンション','アームカール','懸垂'],
+  wrist: ['ベンチプレス','バーベルカール','フロントスクワット']
+};
+
+// ═══ ⑧ Super Recovery Config ═══
+const MUSCLE_GROUPS = {
+  back:  { label:'背中', sub:'広背筋・僧帽筋', size:'large', hours:72 },
+  legs:  { label:'太もも', sub:'大腿四頭筋・ハムストリングス', size:'large', hours:72 },
+  chest: { label:'胸', sub:'大胸筋', size:'medium', hours:48 },
+  shoulders: { label:'肩', sub:'三角筋', size:'medium', hours:48 },
+  arms:  { label:'腕', sub:'上腕二頭筋・三頭筋', size:'medium', hours:48 },
+  abs:   { label:'腹筋', sub:'腹直筋・腹斜筋', size:'small', hours:24 },
+  calves:{ label:'ふくらはぎ', sub:'腓腹筋・ヒラメ筋', size:'small', hours:24 },
+  forearms:{ label:'前腕', sub:'前腕屈筋群', size:'small', hours:24 }
+};
+
+// ═══ ⑥ Exercise Guide Data (Text/Image banned by user, using YouTube search instead) ═══
 
 // ═══ State ═══
 const S = {
@@ -50,12 +69,12 @@ const S = {
   extraTraining: DB.get('t_extra', ''),
   meals: DB.get('t_meals', { breakfast:{food:'',p:'',f:'',c:''}, lunch:{food:'',p:'',f:'',c:''}, dinner:{food:'',p:'',f:'',c:''}, snack:{food:'',p:'',f:'',c:''} }),
   activeMeal: 'breakfast',
-  trainItems: DB.get('t_train', []),   // [{text,done}]
+  trainItems: DB.get('t_train', []),
   aiResponse: DB.get('t_aiResp', ''),
   aiAdvice: DB.get('t_aiAdvice', ''),
   selectedAI: DB.get('sel_ai', 'chatgpt'),
   records: DB.get('records', []),
-  settings: DB.get('settings', { name:'', age:'', height:'', targetWeight:'', equipment:['bodyweight','dumbbells','pullup'], goal:'recomp', activityLevel:'moderate', geminiKey:'', openaiKey:'', gender:'male' }),
+  settings: DB.get('settings', { age:'', height:'', targetWeight:'', equipment:['bodyweight','dumbbells','pullup'], goal:'recomp', activityLevel:'moderate', geminiKey:'', openaiKey:'', gender:'male' }),
   graphPeriod: 30,
   waitingForAI: false,
   streak: streak,
@@ -63,8 +82,21 @@ const S = {
   coachLevel: coachLevel,
   coins: DB.get('game_coins', 0),
   inventory: DB.get('game_inventory', []),
-  boss: DB.get('game_boss', { level: 1, hp: 1000, maxHp: 1000 })
+  boss: DB.get('game_boss', { level: 1, hp: 1000, maxHp: 1000 }),
+  // ③ Injury
+  injuries: DB.get('t_injuries', []),
+  // ④ Protein/Supplement
+  protein: DB.get('t_protein', ''),
+  supplement: DB.get('t_supplement', ''),
+  // ② User Training Level
+  userLevel: DB.get('user_level', 1),
+  userExp: DB.get('user_exp', 0),
+  // ⑧ Recovery timers: { muscleKey: lastTrainedISO }
+  recoveryTimers: DB.get('recovery_timers', {})
 };
+
+// Remove old name field from settings if present (⑦)
+if (S.settings.name !== undefined) { delete S.settings.name; DB.set('settings', S.settings); }
 
 // ═══ Nav ═══
 function navTo(page) {
@@ -78,23 +110,21 @@ function navTo(page) {
 
 // ═══ Init ═══
 document.addEventListener('DOMContentLoaded', () => {
-  // Date
   const now = new Date();
   const days = ['日','月','火','水','木','金','土'];
   const el = document.getElementById('topbar-date');
   if (el) el.textContent = `${now.getFullYear()}/${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')} (${days[now.getDay()]})`;
 
-  // Bind body inputs
   bindVal('inp-weight', 'weight', 't_weight');
   bindVal('inp-fat', 'fat', 't_fat');
   bindVal('inp-steps', 'steps', 't_steps');
   bindTA('inp-extra-training', 'extraTraining', 't_extra');
+  bindVal('inp-protein', 'protein', 't_protein');
+  bindTA('inp-supplement', 'supplement', 't_supplement');
 
-  // AI response textarea
   const aiTA = document.getElementById('ai-response');
   if (aiTA) { aiTA.value = S.aiResponse; aiTA.addEventListener('input', () => { S.aiResponse = aiTA.value; DB.set('t_aiResp', aiTA.value); }); }
 
-  // Meal tabs
   document.querySelectorAll('.meal-tab').forEach(t => t.addEventListener('click', () => {
     S.activeMeal = t.dataset.meal;
     document.querySelectorAll('.meal-tab').forEach(x => x.classList.toggle('active', x.dataset.meal === S.activeMeal));
@@ -108,8 +138,10 @@ document.addEventListener('DOMContentLoaded', () => {
   renderPFC();
   renderTrainList();
   renderAIAdvice();
+  renderRecoveryGrid();
+  renderInjuryUI();
+  renderUserLevel();
 
-  // AI chips
   document.querySelectorAll('.ai-chip').forEach(c => {
     c.classList.toggle('active', c.dataset.ai === S.selectedAI);
     c.addEventListener('click', () => {
@@ -118,12 +150,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Settings
   document.querySelectorAll('.equip-btn').forEach(b => b.addEventListener('click', () => toggleEquip(b.dataset.equip)));
   document.querySelectorAll('.goal-btn').forEach(b => b.addEventListener('click', () => setGoal(b.dataset.goal)));
   document.querySelectorAll('.period-btn').forEach(b => b.addEventListener('click', () => { S.graphPeriod = +b.dataset.period; renderGraphs(); }));
 
-  ['name','age','height'].forEach(k => bindSetting('set-'+k, k));
+  ['age','height'].forEach(k => bindSetting('set-'+k, k));
   bindSetting('set-target', 'targetWeight');
   bindSetting('set-gender', 'gender');
   bindSetting('set-gemini-key', 'geminiKey');
@@ -153,9 +184,9 @@ function updateMetaUI() {
 function bindVal(id, key, dbKey) {
   const el = document.getElementById(id); if (!el) return;
   el.value = S[key];
-  el.addEventListener('input', () => { 
-    S[key] = el.value; 
-    DB.set(dbKey, el.value); 
+  el.addEventListener('input', () => {
+    S[key] = el.value;
+    DB.set(dbKey, el.value);
     if(key==='weight'||key==='fat') updateBodyStatus();
   });
 }
@@ -163,6 +194,131 @@ function bindTA(id, key, dbKey) {
   const el = document.getElementById(id); if (!el) return;
   el.value = S[key];
   el.addEventListener('input', () => { S[key] = el.value; DB.set(dbKey, el.value); });
+}
+
+// ═══ ③ Injury Logic ═══
+function toggleInjury() {
+  const cb = document.getElementById('injury-has');
+  const area = document.getElementById('injury-parts-area');
+  if (cb && area) {
+    area.style.display = cb.checked ? 'block' : 'none';
+    if (!cb.checked) { S.injuries = []; DB.set('t_injuries', S.injuries); renderInjuryUI(); }
+  }
+}
+function toggleInjuryPart(part) {
+  const idx = S.injuries.indexOf(part);
+  if (idx >= 0) S.injuries.splice(idx, 1); else S.injuries.push(part);
+  DB.set('t_injuries', S.injuries);
+  renderInjuryUI();
+}
+function renderInjuryUI() {
+  const cb = document.getElementById('injury-has');
+  const area = document.getElementById('injury-parts-area');
+  if (cb) cb.checked = S.injuries.length > 0;
+  if (area) area.style.display = S.injuries.length > 0 ? 'block' : 'none';
+  document.querySelectorAll('.injury-btn').forEach(b => b.classList.toggle('active', S.injuries.includes(b.dataset.injury)));
+}
+function getBannedExercises() {
+  const banned = new Set();
+  S.injuries.forEach(part => { (INJURY_BAN_MAP[part]||[]).forEach(ex => banned.add(ex)); });
+  return [...banned];
+}
+
+// ═══ ② User Training Level ═══
+function addUserExp(amount) {
+  S.userExp += amount;
+  while (S.userExp >= 100) {
+    S.userLevel++;
+    S.userExp -= 100;
+    setTimeout(()=>{ triggerConfetti(); showToast(`🏆 トレーニングLv.${S.userLevel}にレベルアップ！強度が上がります！`); }, 800);
+  }
+  DB.set('user_level', S.userLevel);
+  DB.set('user_exp', S.userExp);
+  renderUserLevel();
+}
+function renderUserLevel() {
+  const elLv = document.getElementById('user-lv');
+  const elBar = document.getElementById('user-lv-bar');
+  const elExp = document.getElementById('user-exp');
+  if (elLv) elLv.textContent = S.userLevel;
+  if (elBar) elBar.style.width = S.userExp + '%';
+  if (elExp) elExp.textContent = S.userExp;
+}
+
+// ═══ ⑧ Recovery System ═══
+function getRecoveryPhase(muscleKey) {
+  const cfg = MUSCLE_GROUPS[muscleKey];
+  if (!cfg) return { phase:'ready', percent:100, label:'準備OK' };
+  const lastTrained = S.recoveryTimers[muscleKey];
+  if (!lastTrained) return { phase:'ready', percent:100, label:'未トレーニング' };
+  const elapsed = (Date.now() - new Date(lastTrained).getTime()) / (1000*60*60);
+  const ratio = elapsed / cfg.hours;
+  if (ratio < 0.5) return { phase:'damage', percent: Math.round(ratio/0.5*100), label:'破壊・疲労' };
+  if (ratio < 1.0) return { phase:'recovery', percent: Math.round((ratio-0.5)/0.5*100), label:'回復中' };
+  if (ratio < 1.5) return { phase:'peak', percent: 100, label:'超回復(ピーク)' };
+  return { phase:'decay', percent: Math.max(0, Math.round((2.0-ratio)/0.5*100)), label:'衰退中⚠️' };
+}
+function renderRecoveryGrid() {
+  const grid = document.getElementById('recovery-grid');
+  if (!grid) return;
+  let html = '';
+  for (const [key, cfg] of Object.entries(MUSCLE_GROUPS)) {
+    const rp = getRecoveryPhase(key);
+    html += `<div class="recovery-card phase-${rp.phase}">
+      <div class="rc-name">${cfg.label}</div>
+      <div class="rc-bar"><div class="rc-fill" style="width:${rp.percent}%"></div></div>
+      <div class="rc-label">${rp.label}</div>
+    </div>`;
+  }
+  grid.innerHTML = html;
+  // Check for decay warnings
+  for (const [key, cfg] of Object.entries(MUSCLE_GROUPS)) {
+    const rp = getRecoveryPhase(key);
+    if (rp.phase === 'decay') {
+      showToast(`⚠️ ${cfg.label}が衰退フェーズです！早めにトレーニングしましょう`);
+      break;
+    }
+  }
+}
+function recordMuscleTraining(muscleKeys) {
+  const now = new Date().toISOString();
+  muscleKeys.forEach(k => { S.recoveryTimers[k] = now; });
+  DB.set('recovery_timers', S.recoveryTimers);
+  renderRecoveryGrid();
+}
+function getRecoveryPromptInfo() {
+  const excluded = [], priority = [], stretching = [];
+  for (const [key, cfg] of Object.entries(MUSCLE_GROUPS)) {
+    const rp = getRecoveryPhase(key);
+    if (rp.phase === 'damage' || rp.phase === 'recovery') {
+      excluded.push(cfg.label);
+      stretching.push(cfg.label);
+    } else if (rp.phase === 'peak') {
+      priority.push(cfg.label);
+    }
+  }
+  return { excluded, priority, stretching };
+}
+// Map trained exercises to muscle groups
+function detectMuscleGroups(trainItems) {
+  const map = {
+    back: ['懸垂','チンニング','ラットプルダウン','ベントオーバーロウ','ダンベルロウ','シーテッドロウ','デッドリフト','背中'],
+    legs: ['スクワット','レッグプレス','ランジ','レッグカール','レッグエクステンション','太もも','ブルガリアン'],
+    chest: ['ベンチプレス','プッシュアップ','腕立て','ダンベルフライ','チェストプレス','胸'],
+    shoulders: ['ショルダープレス','サイドレイズ','フロントレイズ','リアレイズ','肩'],
+    arms: ['アームカール','ダンベルカール','バーベルカール','トライセプス','スカルクラッシャー','腕','ハンマーカール'],
+    abs: ['クランチ','シットアップ','レッグレイズ','プランク','腹筋','アブ'],
+    calves: ['カーフレイズ','ふくらはぎ'],
+    forearms: ['リストカール','前腕']
+  };
+  const found = new Set();
+  trainItems.forEach(item => {
+    const txt = item.text || '';
+    for (const [group, keywords] of Object.entries(map)) {
+      if (keywords.some(kw => txt.includes(kw))) found.add(group);
+    }
+  });
+  return [...found];
 }
 
 // ═══ Meals ═══
@@ -206,29 +362,22 @@ function renderPFC() {
   const {p,f,c} = totalPFC();
   const tgt = getTargets();
   const kcal = p*4+f*9+c*4;
-  
   document.getElementById('pfc-p-val').textContent = p.toFixed(0)+'g';
   document.getElementById('pfc-f-val').textContent = f.toFixed(0)+'g';
   document.getElementById('pfc-c-val').textContent = c.toFixed(0)+'g';
-  
   const elTgtP = document.getElementById('tgt-p');
-  const elTgtF = document.getElementById('tgt-f');
-  const elTgtC = document.getElementById('tgt-c');
   if(elTgtP) {
-    elTgtP.textContent = `/ ${tgt.p}g`;
-    elTgtF.textContent = `/ ${tgt.f}g`;
-    elTgtC.textContent = `/ ${tgt.c}g`;
+    document.getElementById('tgt-p').textContent = `/ ${tgt.p}g`;
+    document.getElementById('tgt-f').textContent = `/ ${tgt.f}g`;
+    document.getElementById('tgt-c').textContent = `/ ${tgt.c}g`;
     document.getElementById('tdee-note').textContent = `目標カロリー: ${tgt.cal} kcal (現在 ${Math.round(kcal)} kcal)`;
   }
-  
   const pP = tgt.p ? Math.min(100, Math.round(p/tgt.p*100)) : 0;
   const fP = tgt.f ? Math.min(100, Math.round(f/tgt.f*100)) : 0;
   const cP = tgt.c ? Math.min(100, Math.round(c/tgt.c*100)) : 0;
-  
   document.getElementById('pfc-bar-p').style.width = pP+'%';
   document.getElementById('pfc-bar-f').style.width = fP+'%';
   document.getElementById('pfc-bar-c').style.width = cP+'%';
-  
   let note = ``;
   if (kcal > 0) {
     if (p >= tgt.p) note += '✅タンパク質達成 ';
@@ -243,20 +392,30 @@ function renderTrainList() {
   const list = document.getElementById('train-list');
   if (!list) return;
   if (S.trainItems.length === 0) { list.innerHTML = '<div class="empty-state">AIからメニューを取得、または手動追加</div>'; return; }
-  list.innerHTML = S.trainItems.map((item, i) => `
-    <div class="train-item ${item.done?'done':''}">
+  list.innerHTML = S.trainItems.map((item, i) => {
+    // 種目名だけを抽出してYouTube検索リンクを生成
+    const exName = item.text.split(/[ 　\d０-９]/)[0] || item.text;
+    const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(exName + ' 筋トレ やり方')}`;
+    return `<div class="train-item ${item.done?'done':''}">
       <input type="checkbox" class="train-check" ${item.done?'checked':''} onchange="toggleTrain(${i})">
       <span class="train-text ${item.done?'done':''}">${esc(item.text)}</span>
+      <a href="${searchUrl}" target="_blank" rel="noopener noreferrer" style="text-decoration:none; margin-right:12px; font-size:18px; filter:grayscale(100%); transition:0.2s;" title="YouTubeで動画を見る">▶️</a>
       <button class="train-del" onclick="delTrain(${i})">x</button>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
-function toggleTrain(i) { 
-  S.trainItems[i].done = !S.trainItems[i].done; 
-  DB.set('t_train', S.trainItems); 
-  renderTrainList(); 
+function toggleTrain(i) {
+  S.trainItems[i].done = !S.trainItems[i].done;
+  DB.set('t_train', S.trainItems);
+  renderTrainList();
   if (S.trainItems[i].done && S.trainItems.every(x=>x.done)) {
     triggerConfetti();
     showToast('🎉 全トレーニング達成！素晴らしい！');
+    addUserExp(30);
+    const muscles = detectMuscleGroups(S.trainItems);
+    if (muscles.length > 0) recordMuscleTraining(muscles);
+  } else if (S.trainItems[i].done) {
+    addUserExp(5);
   }
 }
 function delTrain(i) { S.trainItems.splice(i,1); DB.set('t_train', S.trainItems); renderTrainList(); }
@@ -271,15 +430,11 @@ function addTrainItem() {
 function parseAIResponse() {
   const text = document.getElementById('ai-response').value;
   if (!text.trim()) { showToast('返答がありません'); return; }
-  
   const lines = text.split('\n');
   let inTrain = false, items = [], advice = [];
   let pfcUpdated = false;
-  
   for (const line of lines) {
     const t = line.trim();
-    
-    // Parse PFC e.g. "朝: P:20g F:5g C:10g" or "昼(P20,F5,C10)"
     const pfcMatch = t.match(/(朝|昼|夜|間食|snack|breakfast|lunch|dinner).*?P\s*[:：]?\s*([\d\.]+).*?F\s*[:：]?\s*([\d\.]+).*?C\s*[:：]?\s*([\d\.]+)/i);
     if (pfcMatch) {
       const mealMap = {'朝':'breakfast', '昼':'lunch', '夜':'dinner', '間食':'snack', 'breakfast':'breakfast', 'lunch':'lunch', 'dinner':'dinner', 'snack':'snack'};
@@ -290,40 +445,25 @@ function parseAIResponse() {
          S.meals[mealKey].c = Math.round(parseFloat(pfcMatch[4]));
          pfcUpdated = true;
       }
-      // Continue to next line so this doesn't show up in advice text directly if we don't want to, but actually keeping it in advice is fine too.
-      // We will skip adding purely PFC lines to advice if they start with meal name
       if (/^(朝|昼|夜|間食).*P.*F.*C/.test(t)) continue;
     }
-
     if (/[■【].*トレーニング|TRAINING/i.test(t)) { inTrain = true; continue; }
     if (/[■【]/.test(t) && inTrain) { inTrain = false; }
-    
     if (inTrain && t) {
-      // Ignore lines that look like conversational text or explanations
       if (t.includes('目的') || t.includes('おすすめ') || t.includes('頑張り') || t.includes('です') || t.includes('ます')) continue;
       const clean = t.replace(/^[\d]+[.．)）]\s*/,'').replace(/^[・\-\*]\s*/,'');
       if (clean.length > 1) items.push({text:clean, done:false});
       continue;
     }
-    
-    // Collect non-training content as advice
     if (!inTrain && t && !/^[■【].*トレーニング/.test(t)) advice.push(t);
   }
-
-  // Update UI with parsed data
-  if (pfcUpdated) {
-    DB.set('t_meals', S.meals);
-    renderMeal(); // update inputs for current active meal tab
-    renderPFC();  // update total PFC UI
-  }
-
+  if (pfcUpdated) { DB.set('t_meals', S.meals); renderMeal(); renderPFC(); }
   if (items.length > 0) {
     S.trainItems = items; DB.set('t_train', S.trainItems); renderTrainList();
     showToast(items.length + '種目を抽出し、PFCを反映しました');
   } else {
     showToast(pfcUpdated ? 'PFCのみを反映しました' : '種目が見つかりませんでした');
   }
-  
   S.aiAdvice = advice.join('\n'); DB.set('t_aiAdvice', S.aiAdvice);
   renderAIAdvice();
 }
@@ -339,30 +479,36 @@ function saveRecord() {
   const today = new Date().toISOString().slice(0,10);
   const idx = S.records.findIndex(r => r.date === today);
   const doneCount = S.trainItems.filter(x=>x.done).length;
-  
   if (idx < 0) {
     S.streak++; DB.set('streak_count', S.streak);
     S.coachExp += 20;
     if (S.streak > 1 && S.streak % 7 === 0) { S.coachExp += 50; showToast('連続達成ボーナス+50EXP!'); }
-  } else {
-    S.coachExp += 5;
-  }
-  
+  } else { S.coachExp += 5; }
   if (S.coachExp >= 100) {
     S.coachLevel++; S.coachExp -= 100;
     setTimeout(()=>{ triggerConfetti(); showToast(`🎉 AIコーチがLv.${S.coachLevel}にレベルアップ！`); }, 1000);
   }
   DB.set('coach_level', S.coachLevel); DB.set('coach_exp', S.coachExp);
   updateMetaUI();
-
+  // ⑧ Record muscle groups from completed exercises
+  const doneTrain = S.trainItems.filter(x=>x.done);
+  if (doneTrain.length > 0) {
+    const muscles = detectMuscleGroups(doneTrain);
+    if (muscles.length > 0) recordMuscleTraining(muscles);
+    // ② Super recovery cycle bonus
+    const recInfo = getRecoveryPromptInfo();
+    if (recInfo.priority.length > 0 && muscles.length > 0) {
+      addUserExp(20);
+      showToast('💪 超回復タイミングでのトレーニング！+20EXP');
+    }
+  }
   // Boss Battle Logic
   const tgt = getTargets();
   const {p,f,c} = totalPFC();
   const kcal = p*4+f*9+c*4;
-  let dmg = 50 + (S.streak * 5); // Base dmg + streak
+  let dmg = 50 + (S.streak * 5);
   if (S.trainItems.length && doneCount === S.trainItems.length) dmg += 100;
   if (kcal > 0 && Math.abs(kcal - tgt.cal) < 300) dmg += 100;
-  
   S.boss.hp -= dmg;
   if (S.boss.hp <= 0) {
     const reward = 100 + (S.boss.level - 1) * 20;
@@ -372,9 +518,7 @@ function saveRecord() {
     S.boss.hp = S.boss.maxHp;
     setTimeout(()=>{ triggerConfetti(); showToast(`⚔️ ボス討伐！ ${reward}コイン獲得！`); renderGame(); }, 1500);
     DB.set('game_coins', S.coins);
-  } else {
-    showToast(`⚔️ ボスに ${dmg} ダメージを与えた！`);
-  }
+  } else { showToast(`⚔️ ボスに ${dmg} ダメージを与えた！`); }
   DB.set('game_boss', S.boss);
 
   const rec = {
@@ -383,6 +527,13 @@ function saveRecord() {
     trainItems: JSON.parse(JSON.stringify(S.trainItems)),
     trainDone: S.trainItems.length ? Math.round(doneCount/S.trainItems.length*100) : 0,
     extraTraining: S.extraTraining,
+    // ③ Injuries
+    injuries: [...S.injuries],
+    // ④ Protein/Supplement
+    protein: S.protein,
+    supplement: S.supplement,
+    // ⑧ Recovery snapshot
+    recoveryTimers: JSON.parse(JSON.stringify(S.recoveryTimers))
   };
   if (idx >= 0) S.records[idx] = rec; else S.records.push(rec);
   S.records.sort((a,b) => a.date.localeCompare(b.date));
@@ -390,13 +541,11 @@ function saveRecord() {
   showToast('保存しました');
   updateDeltas();
   updateBodyStatus();
+  renderRecoveryGrid();
 }
 
 // ═══ Send to AI ═══
-function saveAndSendAI() {
-  saveRecord();
-  sendToAI();
-}
+function saveAndSendAI() { saveRecord(); sendToAI(); }
 
 function sendToAI() {
   const btn = document.getElementById('btn-save-send');
@@ -424,10 +573,11 @@ function sendToAI() {
       if (mStr) history += `  食事: ${mStr}\n`;
       if (tStr) history += `  トレーニング: ${tStr} (達成率${r.trainDone||0}%)\n`;
       if (r.extraTraining) history += `  追加: ${r.extraTraining}\n`;
+      if (r.protein) history += `  プロテイン: ${r.protein}g\n`;
+      if (r.supplement) history += `  サプリ: ${r.supplement}\n`;
     }
   }
 
-  // Today meal summary
   const mealStr = Object.entries(S.meals).map(([k,v])=>{
     const n={breakfast:'朝',lunch:'昼',dinner:'夜',snack:'間食'}[k];
     if (!v.food) return '';
@@ -437,6 +587,38 @@ function sendToAI() {
 
   const doneCount = S.trainItems.filter(x=>x.done).length;
   const trainStatus = S.trainItems.length ? S.trainItems.map(t=>`${t.done?'[済]':'[未]'} ${t.text}`).join('\n') : '未設定';
+
+  // ③ Injury exclusion prompt
+  const banned = getBannedExercises();
+  let injuryPrompt = '';
+  if (banned.length > 0) {
+    const injuryLabels = { shoulder:'肩', lower_back:'腰', knee:'膝', elbow:'肘', wrist:'手首' };
+    const parts = S.injuries.map(i=>injuryLabels[i]||i).join('・');
+    injuryPrompt = `\n【重要：ケガ・痛みによる制限】\nユーザーは現在「${parts}」に痛みがあります。\n以下の種目は絶対に提案しないでください：${banned.join('、')}\n痛みのある部位には、代わりにストレッチメニューを提案してください。\n`;
+  }
+
+  // ⑧ Recovery prompt
+  const recInfo = getRecoveryPromptInfo();
+  let recoveryPrompt = '';
+  if (recInfo.excluded.length > 0 || recInfo.priority.length > 0) {
+    recoveryPrompt = '\n【超回復フェーズ情報】\n';
+    if (recInfo.excluded.length > 0) recoveryPrompt += `回復中（筋トレ対象外、ストレッチのみ提案可）：${recInfo.excluded.join('、')}\n`;
+    if (recInfo.priority.length > 0) recoveryPrompt += `超回復ピーク（優先的に鍛えるべき部位）：${recInfo.priority.join('、')}\n`;
+  }
+
+  // ⑤ Stretch prompt
+  let stretchPrompt = '\n【ストレッチ】\nトレーニング前のウォームアップストレッチと、トレーニング後のクールダウンストレッチを各2-3種目提案してください。\n';
+  if (recInfo.stretching.length > 0 || S.injuries.length > 0) {
+    const strParts = [...new Set([...recInfo.stretching, ...S.injuries.map(i=>({shoulder:'肩',lower_back:'腰',knee:'膝',elbow:'肘',wrist:'手首'}[i]||i))])];
+    stretchPrompt += `特に「${strParts.join('・')}」については、ウエイトトレーニングの代わりにストレッチメニューを優先提案してください。\n`;
+  }
+
+  // ② Level-based difficulty
+  let levelPrompt = `\n【ユーザートレーニングレベル: Lv.${S.userLevel}】\n`;
+  if (S.userLevel <= 3) levelPrompt += 'まだ初心者レベルです。基本的な種目を中心に、軽めの負荷で組んでください。\n';
+  else if (S.userLevel <= 7) levelPrompt += '中級者レベルです。適度な負荷と種目バリエーションで組んでください。\n';
+  else if (S.userLevel <= 12) levelPrompt += '上級者レベルです。高強度・高ボリュームで追い込むメニューを組んでください。\n';
+  else levelPrompt += 'エキスパートレベルです。限界を超える強度・テクニック(ドロップセット等)を含めてください。\n';
 
   let toneStr = "【TRPGのゲームマスター風】ファンタジーRPGの世界観で、ユーザーを『勇者』と呼び、脂肪を『魔物』に例えること。丁寧で落ち着いた導き手のような口調";
   if (S.coachLevel >= 15) toneStr = "【TRPGのゲームマスター風】ファンタジーRPGの世界観で、ユーザーを『勇者』と呼び、脂肪を『魔王』に例えること。最高に熱い情熱と大声で、魂を震わせるような超劇的な口調";
@@ -455,9 +637,9 @@ function sendToAI() {
 ・目標に合わせた負荷設定
 ・必要なことだけ答える
 ・毎日1つモチベ知識を入れる
-
+${injuryPrompt}${recoveryPrompt}${stretchPrompt}${levelPrompt}
 【ユーザー情報】
-名前：${s.name||'未設定'} (${s.gender==='female'?'女性':'男性'})
+(${s.gender==='female'?'女性':'男性'})
 目標：${goalMap[s.goal]||s.goal}
 器具：${equip}
 ${s.height?'身長：'+s.height+'cm':''}${s.age?' 年齢：'+s.age+'歳':''}${s.targetWeight?' 目標体重：'+s.targetWeight+'kg':''}
@@ -468,6 +650,8 @@ ${history}
 体重：${S.weight||'未入力'}kg
 体脂肪率：${S.fat||'未入力'}%
 歩数：${S.steps||'未入力'}歩
+プロテイン摂取：${S.protein||'0'}g
+サプリメント：${S.supplement||'なし'}
 食事内容（PFC未入力の場合は食事名からPFCを自動計算して推測してください）：
 ${mealStr}
 PFC合計：P${p.toFixed(0)}g / F${f.toFixed(0)}g / C${c.toFixed(0)}g（${kcal}kcal）
@@ -483,10 +667,17 @@ ${S.extraTraining?'追加トレーニング：'+S.extraTraining:''}
 夜: P:◯g F:◯g C:◯g
 間食: P:◯g F:◯g C:◯g
 
+■ウォームアップストレッチ
+・種目名 秒数or回数
+・種目名 秒数or回数
+
 ■明日のトレーニング
 ※種目名と回数・セット数のみを箇条書きすること。目的や解説の記載は厳禁。
 ・種目名 ◯回×◯セット
 ・種目名 ◯回×◯セット
+
+■クールダウンストレッチ
+・種目名 秒数or回数
 
 ■食事アドバイス
 朝:
@@ -500,14 +691,12 @@ ${S.extraTraining?'追加トレーニング：'+S.extraTraining:''}
 ■今日の知識
 ・`;
 
-  const aiType = S.selectedAI; // 'chatgpt' or 'gemini' or 'claude'
-  
+  const aiType = S.selectedAI;
   if (aiType === 'claude') {
     showToast('Claude APIは現在未対応です。GeminiかChatGPTを選択してください');
     if (btn) { btn.disabled = false; btn.textContent = 'SAVE & SEND TO AI'; }
     return;
   }
-
   const key = aiType === 'gemini' ? S.settings.geminiKey.trim() : S.settings.openaiKey.trim();
   if (!key) {
     showToast(`設定タブで${aiType}のAPIキーを入力してください`);
@@ -515,7 +704,6 @@ ${S.extraTraining?'追加トレーニング：'+S.extraTraining:''}
     if (btn) { btn.disabled = false; btn.textContent = 'SAVE & SEND TO AI'; }
     return;
   }
-
   fetchAI(aiType, key, prompt).then(res => {
     document.getElementById('ai-response').value = res;
     S.aiResponse = res; DB.set('t_aiResp', res);
@@ -583,8 +771,6 @@ async function fetchAI(type, key, prompt) {
   }
 }
 
-function fbCopy(t){const a=document.createElement('textarea');a.value=t;a.style.cssText='position:fixed;opacity:0';document.body.appendChild(a);a.select();document.execCommand('copy');document.body.removeChild(a)}
-
 // ═══ Deltas ═══
 function updateDeltas() {
   const last = S.records.length >= 1 ? S.records[S.records.length-1] : null;
@@ -625,7 +811,6 @@ function renderBar(id,data,color){
 // ═══ Settings ═══
 function renderSettings(){
   const s=S.settings;
-  document.getElementById('set-name').value=s.name||'';
   document.getElementById('set-age').value=s.age||'';
   document.getElementById('set-height').value=s.height||'';
   document.getElementById('set-target').value=s.targetWeight||'';
@@ -640,7 +825,7 @@ function saveSets(){DB.set('settings',S.settings)}
 function toggleEquip(e){const a=S.settings.equipment||[];const i=a.indexOf(e);if(i>=0)a.splice(i,1);else a.push(e);S.settings.equipment=a;saveSets();renderEquip();}
 function setGoal(g){S.settings.goal=g;saveSets();renderPFC();document.querySelectorAll('.goal-btn').forEach(b=>b.classList.toggle('active',b.dataset.goal===g))}
 
-// ═══ History ═══
+// ═══ ① History (Enhanced with training details, protein, supplements, injuries) ═══
 function renderHistory() {
   const hl = document.getElementById('history-list');
   if (!hl) return;
@@ -654,6 +839,29 @@ function renderHistory() {
         if(v.food) tMeals += `${{breakfast:'朝',lunch:'昼',dinner:'夜',snack:'間'}[k]}: ${v.food}<br>`;
       });
     }
+    // ① Training history details
+    let tTrain = '';
+    if (r.trainItems && r.trainItems.length > 0) {
+      tTrain = '<div class="hist-train-list">';
+      r.trainItems.forEach(t => {
+        tTrain += `<div class="hist-train-item ${t.done?'done-item':'undone-item'}">${t.done?'✅':'⬜'} ${esc(t.text)}</div>`;
+      });
+      tTrain += '</div>';
+    }
+    // ④ Protein/Supplement display
+    let tSuppl = '';
+    if (r.protein || r.supplement) {
+      tSuppl = '<div class="hist-suppl">';
+      if (r.protein) tSuppl += `💊 プロテイン: ${r.protein}g `;
+      if (r.supplement) tSuppl += `💊 サプリ: ${r.supplement}`;
+      tSuppl += '</div>';
+    }
+    // ③ Injury display
+    let tInjury = '';
+    const injuryLabels = { shoulder:'肩', lower_back:'腰', knee:'膝', elbow:'肘', wrist:'手首' };
+    if (r.injuries && r.injuries.length > 0) {
+      tInjury = `<div style="font-size:.72rem;color:var(--red);margin-top:4px;">⚠️ 痛み: ${r.injuries.map(i=>injuryLabels[i]||i).join('・')}</div>`;
+    }
     html += `
     <div class="card" style="margin-bottom:12px; font-size:13px; line-height:1.5;">
       <div style="display:flex; justify-content:space-between; color:#03c076; font-weight:bold; margin-bottom:8px;">
@@ -663,9 +871,12 @@ function renderHistory() {
       <div style="color:#eaecef;">
         体重: ${r.weight||'--'}kg / 体脂肪: ${r.fat||'--'}% / 歩数: ${r.steps||'--'}<br>
       </div>
+      ${tTrain}
       <div style="margin-top:8px; color:#848e9c; border-top:1px solid #2b3139; padding-top:8px;">
         ${tMeals||'食事記録なし'}
       </div>
+      ${tSuppl}
+      ${tInjury}
     </div>`;
   }
   hl.innerHTML = html;
@@ -675,20 +886,16 @@ function renderHistory() {
 function renderGame() {
   const elLv = document.getElementById('boss-lv'); if(!elLv) return;
   elLv.textContent = S.boss.level;
-  
   const bNames = ['暴食の魔王', '怠惰の悪魔', '炭水化物の化身', '深夜の誘惑者', 'リバウンド大帝'];
   document.getElementById('boss-name').textContent = bNames[(S.boss.level - 1) % bNames.length];
-  
   const hpP = Math.max(0, Math.min(100, (S.boss.hp / S.boss.maxHp) * 100));
   document.getElementById('boss-hp-bar').style.width = hpP + '%';
   document.getElementById('boss-hp-text').textContent = `${Math.max(0, S.boss.hp)} / ${S.boss.maxHp}`;
   document.getElementById('coin-val').textContent = S.coins;
-  
   const invList = document.getElementById('inventory-list');
   if (S.inventory.length === 0) {
     invList.innerHTML = '<div class="empty-state" style="width:100%">まだアイテムを持っていません</div>';
   } else {
-    // Count items
     const counts = {};
     S.inventory.forEach(i => counts[i] = (counts[i]||0) + 1);
     invList.innerHTML = Object.entries(counts).map(([name, count]) => `
@@ -702,7 +909,6 @@ function renderGame() {
 function rollGacha() {
   if (S.coins < 50) { showToast('コインが足りません'); return; }
   S.coins -= 50; DB.set('game_coins', S.coins);
-  
   const r = Math.random();
   let item = '';
   if (r < 0.01) item = '🎟️ 究極のチートデイ解放券';
@@ -713,20 +919,15 @@ function rollGacha() {
   else if (r < 0.55) item = '🍩 悪魔のチョコドーナツ';
   else if (r < 0.70) item = '🍦 誘惑のソフトクリーム';
   else item = '🍫 ちょっと一息チョコレート';
-  
   S.inventory.push(item);
   DB.set('game_inventory', S.inventory);
-  
   if (r < 0.01) {
     triggerConfetti();
     setTimeout(() => alert('🎉🎉 大当たり！！\n【究極のチートデイ解放券】を獲得しました！\n今日だけは何を食べてもOK！'), 500);
   } else if (r < 0.25) {
     triggerConfetti();
     showToast(`✨ レアアイテム！\n${item} を獲得！`);
-  } else {
-    showToast(`${item} を獲得した`);
-  }
-  
+  } else { showToast(`${item} を獲得した`); }
   renderGame();
 }
 
@@ -786,11 +987,8 @@ function updateBodyStatus() {
   const w = parseFloat(S.weight);
   const f = parseFloat(S.fat);
   const g = S.settings.gender || 'male';
-
   if (!w || (!h && !f)) { st.style.display = 'none'; return; }
   st.style.display = 'block';
-
-  // BMI
   if (w && h) {
     const hm = h / 100;
     const bmi = w / (hm * hm);
@@ -801,7 +999,6 @@ function updateBodyStatus() {
     else if (bmi < 30) text = '肥満(1度)';
     else text = '肥満(2度以上)';
     document.getElementById('bmi-text').textContent = text;
-    // Map BMI 15-35 to 0-100%
     left = ((bmi - 15) / 20) * 100;
     document.getElementById('bmi-pointer').style.left = Math.max(0, Math.min(100, left)) + '%';
   } else {
@@ -809,8 +1006,6 @@ function updateBodyStatus() {
     document.getElementById('bmi-text').textContent = '--';
     document.getElementById('bmi-pointer').style.left = '0%';
   }
-
-  // Fat
   if (f) {
     document.getElementById('fat-val').textContent = f.toFixed(1);
     let text = '', left = 0;
@@ -819,13 +1014,13 @@ function updateBodyStatus() {
       else if (f < 20) text = '標準';
       else if (f < 25) text = 'やや高い(軽度肥満)';
       else text = '高い(肥満)';
-      left = ((f - 5) / 30) * 100; // map 5-35 to 0-100
+      left = ((f - 5) / 30) * 100;
     } else {
       if (f < 20) text = '低い(アスリート)';
       else if (f < 30) text = '標準';
       else if (f < 35) text = 'やや高い(軽度肥満)';
       else text = '高い(肥満)';
-      left = ((f - 15) / 30) * 100; // map 15-45 to 0-100
+      left = ((f - 15) / 30) * 100;
     }
     document.getElementById('fat-text').textContent = text;
     document.getElementById('fat-pointer').style.left = Math.max(0, Math.min(100, left)) + '%';
@@ -834,10 +1029,7 @@ function updateBodyStatus() {
     document.getElementById('fat-text').textContent = '--';
     document.getElementById('fat-pointer').style.left = '0%';
   }
-
-  // Goal Progress
   const tw = parseFloat(S.settings.targetWeight);
-  // Get oldest record weight as start, else current
   const startW = S.records.length > 0 ? parseFloat(S.records[0].weight) : w;
   if (w && tw && startW && tw !== startW) {
     const totalDiff = Math.abs(startW - tw);
@@ -852,5 +1044,3 @@ function updateBodyStatus() {
     document.getElementById('goal-progress-bar').style.width = '0%';
   }
 }
-
-
