@@ -38,6 +38,15 @@ if (lastDate !== todayStr) {
   DB.set('last_date', todayStr);
 }
 
+// ═══ ③ Injury Banned Exercises Mapping ═══
+const INJURY_BAN_MAP = {
+  shoulder: ['ベンチプレス','ショルダープレス','サイドレイズ'],
+  lower_back: ['デッドリフト','スクワット','ベントオーバーロウ'],
+  knee: ['スクワット','レッグプレス','ランジ'],
+  elbow: ['スカルクラッシャー','トリセプス・エクステンション','アームカール','懸垂'],
+  wrist: ['ベンチプレス','バーベルカール','フロントスクワット']
+};
+
 // ═══ ⑧ Super Recovery Config ═══
 const MUSCLE_GROUPS = {
   back:  { label:'背中', sub:'広背筋・僧帽筋', size:'large', hours:72 },
@@ -91,6 +100,8 @@ const S = {
   coins: DB.get('game_coins', 0),
   inventory: DB.get('game_inventory', []),
   boss: DB.get('game_boss', { level: 1, hp: 1000, maxHp: 1000 }),
+  // ③ Injury
+  injuries: DB.get('t_injuries', []),
   // ④ Protein/Supplement
   protein: DB.get('t_protein', ''),
   supplement: DB.get('t_supplement', ''),
@@ -145,6 +156,7 @@ document.addEventListener('DOMContentLoaded', () => {
   renderTrainList();
   renderAIAdvice();
   renderRecoveryGrid();
+  renderInjuryUI();
   renderUserLevel();
 
   document.querySelectorAll('.ai-chip').forEach(c => {
@@ -199,6 +211,34 @@ function bindTA(id, key, dbKey) {
   const el = document.getElementById(id); if (!el) return;
   el.value = S[key];
   el.addEventListener('input', () => { S[key] = el.value; DB.set(dbKey, el.value); });
+}
+
+// ═══ ③ Injury Logic ═══
+function toggleInjury() {
+  const cb = document.getElementById('injury-has');
+  const area = document.getElementById('injury-parts-area');
+  if (cb && area) {
+    area.style.display = cb.checked ? 'block' : 'none';
+    if (!cb.checked) { S.injuries = []; DB.set('t_injuries', S.injuries); renderInjuryUI(); }
+  }
+}
+function toggleInjuryPart(part) {
+  const idx = S.injuries.indexOf(part);
+  if (idx >= 0) S.injuries.splice(idx, 1); else S.injuries.push(part);
+  DB.set('t_injuries', S.injuries);
+  renderInjuryUI();
+}
+function renderInjuryUI() {
+  const cb = document.getElementById('injury-has');
+  const area = document.getElementById('injury-parts-area');
+  if (cb) cb.checked = S.injuries.length > 0;
+  if (area) area.style.display = S.injuries.length > 0 ? 'block' : 'none';
+  document.querySelectorAll('.injury-btn').forEach(b => b.classList.toggle('active', S.injuries.includes(b.dataset.injury)));
+}
+function getBannedExercises() {
+  const banned = new Set();
+  S.injuries.forEach(part => { (INJURY_BAN_MAP[part]||[]).forEach(ex => banned.add(ex)); });
+  return [...banned];
 }
 
 // ═══ ② User Training Level ═══
@@ -380,7 +420,7 @@ function renderTrainList() {
     if (vId) {
       btnHtml = `<button class="train-info-btn" onclick="toggleVideo(${i})" style="font-size:16px;" title="アプリ内で動画を見る">▶️</button>`;
       frameHtml = `<div class="exercise-guide" id="video-${i}" style="display:none; padding: 10px 0;">
-        <iframe width="100%" height="200" src="https://www.youtube.com/embed/${vId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="border-radius:8px;"></iframe>
+        <iframe width="100%" height="200" src="https://www.youtube-nocookie.com/embed/${vId}" frameborder="0" referrerpolicy="strict-origin-when-cross-origin" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="border-radius:8px;"></iframe>
       </div>`;
     } else {
       btnHtml = `<a href="${extSearchUrl}" target="_blank" rel="noopener noreferrer" style="text-decoration:none; margin-right:12px; font-size:18px; filter:grayscale(100%); transition:0.2s;" title="YouTubeで動画を検索する">🔍</a>`;
@@ -522,6 +562,8 @@ function saveRecord() {
     trainItems: JSON.parse(JSON.stringify(S.trainItems)),
     trainDone: S.trainItems.length ? Math.round(doneCount/S.trainItems.length*100) : 0,
     extraTraining: S.extraTraining,
+    // ③ Injuries
+    injuries: [...S.injuries],
     // ④ Protein/Supplement
     protein: S.protein,
     supplement: S.supplement,
@@ -581,6 +623,15 @@ function sendToAI() {
   const doneCount = S.trainItems.filter(x=>x.done).length;
   const trainStatus = S.trainItems.length ? S.trainItems.map(t=>`${t.done?'[済]':'[未]'} ${t.text}`).join('\n') : '未設定';
 
+  // ③ Injury exclusion prompt
+  const banned = getBannedExercises();
+  let injuryPrompt = '';
+  if (banned.length > 0) {
+    const injuryLabels = { shoulder:'肩', lower_back:'腰', knee:'膝', elbow:'肘', wrist:'手首' };
+    const parts = S.injuries.map(i=>injuryLabels[i]||i).join('・');
+    injuryPrompt = `\n【重要：ケガ・痛みによる制限】\nユーザーは現在「${parts}」に痛みがあります。\n以下の種目は絶対に提案しないでください：${banned.join('、')}\n痛みのある部位には、代わりにストレッチメニューを提案してください。\n`;
+  }
+
   // ⑧ Recovery prompt
   const recInfo = getRecoveryPromptInfo();
   let recoveryPrompt = '';
@@ -592,8 +643,8 @@ function sendToAI() {
 
   // ⑤ Stretch prompt
   let stretchPrompt = '\n【ストレッチ】\nトレーニング前のウォームアップストレッチと、トレーニング後のクールダウンストレッチを各2-3種目提案してください。\n';
-  if (recInfo.stretching.length > 0) {
-    const strParts = [...new Set([...recInfo.stretching])];
+  if (recInfo.stretching.length > 0 || S.injuries.length > 0) {
+    const strParts = [...new Set([...recInfo.stretching, ...S.injuries.map(i=>({shoulder:'肩',lower_back:'腰',knee:'膝',elbow:'肘',wrist:'手首'}[i]||i))])];
     stretchPrompt += `特に「${strParts.join('・')}」については、ウエイトトレーニングの代わりにストレッチメニューを優先提案してください。\n`;
   }
 
@@ -621,7 +672,8 @@ function sendToAI() {
 ・目標に合わせた負荷設定
 ・必要なことだけ答える
 ・毎日1つモチベ知識を入れる
-${recoveryPrompt}${stretchPrompt}${levelPrompt}
+・【重要】トレーニングメニューの箇条書き内には、「種目名 回数×セット数」のみを記述し、「肘に違和感があれば～」などの注意書きやアドバイス文は絶対に含めないでください。
+${injuryPrompt}${recoveryPrompt}${stretchPrompt}${levelPrompt}
 【ユーザー情報】
 (${s.gender==='female'?'女性':'男性'})
 目標：${goalMap[s.goal]||s.goal}

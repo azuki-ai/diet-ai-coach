@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://musclewiki.com https://*.githubusercontent.com https://i.imgur.com; connect-src 'self' https://generativelanguage.googleapis.com https://api.openai.com; font-src 'self'; frame-src https://www.youtube.com https://youtube.com;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://musclewiki.com https://*.githubusercontent.com https://i.imgur.com; connect-src 'self' https://generativelanguage.googleapis.com https://api.openai.com; font-src 'self'; frame-src https://www.youtube.com https://youtube.com https://www.youtube-nocookie.com;">
 <meta http-equiv="X-Content-Type-Options" content="nosniff">
 <meta name="referrer" content="no-referrer">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -87,6 +87,25 @@
             <div class="meter-bar" style="position:relative; height:8px; background:#2b3139; border-radius:4px; overflow:hidden;">
               <div id="goal-progress-bar" style="width:0%; height:100%; background:linear-gradient(to right, #03c076, #f0b90b); transition:width 0.5s ease;"></div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ③ Injury Check -->
+      <div class="section">
+        <div class="card-title">⚠️ INJURY CHECK（ケガ・痛みの確認）</div>
+        <div class="injury-toggle">
+          <input type="checkbox" id="injury-has" onchange="toggleInjury()">
+          <label for="injury-has">現在、痛みや違和感がある</label>
+        </div>
+        <div id="injury-parts-area" style="display:none;">
+          <div style="font-size:.68rem;color:#848e9c;margin-bottom:6px;">痛みのある部位を選択してください</div>
+          <div class="injury-parts">
+            <button class="injury-btn" data-injury="shoulder" onclick="toggleInjuryPart('shoulder')">🦴 肩<span class="injury-sub">ローテーターカフ・腱板</span></button>
+            <button class="injury-btn" data-injury="lower_back" onclick="toggleInjuryPart('lower_back')">🦴 腰<span class="injury-sub">腰椎・脊柱起立筋</span></button>
+            <button class="injury-btn" data-injury="knee" onclick="toggleInjuryPart('knee')">🦴 膝<span class="injury-sub">膝蓋腱・側副靭帯</span></button>
+            <button class="injury-btn" data-injury="elbow" onclick="toggleInjuryPart('elbow')">🦴 肘<span class="injury-sub">内側上顆・外側上顆</span></button>
+            <button class="injury-btn" data-injury="wrist" onclick="toggleInjuryPart('wrist')">🦴 手首<span class="injury-sub">TFCC・腱鞘</span></button>
           </div>
         </div>
       </div>
