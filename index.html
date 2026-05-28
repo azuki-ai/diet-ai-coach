@@ -143,10 +143,12 @@
       <!-- ④ Protein & Supplements -->
       <div class="section">
         <div class="card-title">💊 PROTEIN & SUPPLEMENTS</div>
-        <div class="suppl-row">
-          <div class="field"><label>プロテイン (g)</label><input type="number" id="inp-protein" placeholder="0" step="1"></div>
-          <div class="field"><label>サプリメント</label><input type="text" id="inp-supplement" placeholder="例: BCAA, クレアチン"></div>
+        <div class="input-row-3">
+          <div class="field"><label>P (g)</label><input type="number" id="inp-sup-p" placeholder="0"></div>
+          <div class="field"><label>F (g)</label><input type="number" id="inp-sup-f" placeholder="0"></div>
+          <div class="field"><label>C (g)</label><input type="number" id="inp-sup-c" placeholder="0"></div>
         </div>
+        <div class="field" style="margin-top:8px"><label>メモ</label><input type="text" id="inp-supplement" placeholder="例: ホエイプロテイン, BCAA, クレアチン"></div>
       </div>
 
       <!-- PFC -->
@@ -315,16 +317,24 @@
       </div>
       <div class="input-row">
         <div class="field"><label>HEIGHT (cm)</label><input type="number" id="set-height" placeholder="--"></div>
-        <div class="field"><label>TARGET (kg)</label><input type="number" id="set-target" placeholder="--"></div>
+        <div class="field"><label>なりたい体型</label>
+          <select id="set-body-type" style="width:100%; padding:8px; border-radius:4px; border:1px solid #2b3139; background:#0b0e11; color:#eaecef;">
+            <option value="slim">スリム・引き締め</option>
+            <option value="lean">細マッチョ</option>
+            <option value="muscular">マッチョ</option>
+            <option value="healthy" selected>健康的・ナチュラル</option>
+            <option value="athlete">アスリート</option>
+          </select>
+        </div>
       </div>
     </div>
   </div>
   <div class="setting-group">
-    <div class="setting-group-title">GOAL</div>
-    <div class="goal-grid">
-      <button class="goal-btn" data-goal="bulk">増量</button>
-      <button class="goal-btn active" data-goal="recomp">リコンプ</button>
-      <button class="goal-btn" data-goal="cut">減量</button>
+    <div class="setting-group-title">お悩み・気になる箇所</div>
+    <div class="card">
+      <div class="field">
+        <textarea id="set-concerns" rows="2" placeholder="例: お腹周りの脂肪が気になる、肩こりがひどい" style="width:100%; padding:8px; border-radius:4px; border:1px solid #2b3139; background:#0b0e11; color:#eaecef; resize:vertical;"></textarea>
+      </div>
     </div>
   </div>
   <div class="setting-group">

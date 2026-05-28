@@ -20,6 +20,7 @@ const DB = {
 
 // ═══ Date Change Reset & Streak ═══
 const todayStr = new Date().toISOString().slice(0,10);
+let currentDateStr = todayStr;
 const lastDate = DB.get('last_date', todayStr);
 let streak = DB.get('streak_count', 0);
 let coachExp = DB.get('coach_exp', 0);
@@ -91,7 +92,7 @@ const S = {
   aiAdvice: DB.get('t_aiAdvice', ''),
   selectedAI: DB.get('sel_ai', 'chatgpt'),
   records: DB.get('records', []),
-  settings: DB.get('settings', { age:'', height:'', targetWeight:'', equipment:['bodyweight','dumbbells','pullup'], goal:'recomp', activityLevel:'moderate', geminiKey:'', openaiKey:'', gender:'male' }),
+  settings: DB.get('settings', { age:'', height:'', bodyType:'healthy', equipment:['bodyweight','dumbbells','pullup'], concerns:'', activityLevel:'moderate', geminiKey:'', openaiKey:'', gender:'male' }),
   graphPeriod: 30,
   waitingForAI: false,
   streak: streak,
@@ -103,7 +104,9 @@ const S = {
   // ③ Injury
   injuries: DB.get('t_injuries', []),
   // ④ Protein/Supplement
-  protein: DB.get('t_protein', ''),
+  proteinP: DB.get('t_proteinP', ''),
+  proteinF: DB.get('t_proteinF', ''),
+  proteinC: DB.get('t_proteinC', ''),
   supplement: DB.get('t_supplement', ''),
   // ② User Training Level
   userLevel: DB.get('user_level', 1),
@@ -136,8 +139,10 @@ document.addEventListener('DOMContentLoaded', () => {
   bindVal('inp-fat', 'fat', 't_fat');
   bindVal('inp-steps', 'steps', 't_steps');
   bindTA('inp-extra-training', 'extraTraining', 't_extra');
-  bindVal('inp-protein', 'protein', 't_protein');
-  bindTA('inp-supplement', 'supplement', 't_supplement');
+  bindVal('inp-sup-p', 'proteinP', 't_proteinP');
+  bindVal('inp-sup-f', 'proteinF', 't_proteinF');
+  bindVal('inp-sup-c', 'proteinC', 't_proteinC');
+  bindVal('inp-supplement', 'supplement', 't_supplement');
 
   const aiTA = document.getElementById('ai-response');
   if (aiTA) { aiTA.value = S.aiResponse; aiTA.addEventListener('input', () => { S.aiResponse = aiTA.value; DB.set('t_aiResp', aiTA.value); }); }
@@ -168,11 +173,11 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   document.querySelectorAll('.equip-btn').forEach(b => b.addEventListener('click', () => toggleEquip(b.dataset.equip)));
-  document.querySelectorAll('.goal-btn').forEach(b => b.addEventListener('click', () => setGoal(b.dataset.goal)));
   document.querySelectorAll('.period-btn').forEach(b => b.addEventListener('click', () => { S.graphPeriod = +b.dataset.period; renderGraphs(); }));
 
   ['age','height'].forEach(k => bindSetting('set-'+k, k));
-  bindSetting('set-target', 'targetWeight');
+  bindSetting('set-body-type', 'bodyType');
+  bindSetting('set-concerns', 'concerns');
   bindSetting('set-gender', 'gender');
   bindSetting('set-gemini-key', 'geminiKey');
   bindSetting('set-openai-key', 'openaiKey');
@@ -205,6 +210,7 @@ function bindVal(id, key, dbKey) {
     S[key] = el.value;
     DB.set(dbKey, el.value);
     if(key==='weight'||key==='fat') updateBodyStatus();
+    if(['proteinP','proteinF','proteinC'].includes(key)) renderPFC();
   });
 }
 function bindTA(id, key, dbKey) {
@@ -354,12 +360,15 @@ function saveMeal() {
 function totalPFC() {
   let p=0,f=0,c=0;
   Object.values(S.meals).forEach(m => { p+=parseFloat(m.p)||0; f+=parseFloat(m.f)||0; c+=parseFloat(m.c)||0; });
+  p += parseFloat(S.proteinP)||0;
+  f += parseFloat(S.proteinF)||0;
+  c += parseFloat(S.proteinC)||0;
   return {p,f,c};
 }
 
 function getTargets() {
   const s = S.settings;
-  const w = parseFloat(S.weight) || parseFloat(s.targetWeight) || 60;
+  const w = parseFloat(S.weight) || 60;
   const h = parseFloat(s.height) || 170;
   const a = parseFloat(s.age) || 30;
   const g = s.gender || 'male';
@@ -367,9 +376,9 @@ function getTargets() {
   const act = {low:1.2, moderate:1.55, high:1.725}[s.activityLevel] || 1.55;
   let tdee = bmr * act;
   let tCal = tdee;
-  if (s.goal === 'cut') tCal -= 500;
-  else if (s.goal === 'bulk') tCal += 300;
-  const tP = w * 2;
+  if (s.bodyType === 'slim' || s.bodyType === 'athlete') tCal -= 300;
+  else if (s.bodyType === 'muscular') tCal += 300;
+  const tP = w * 2.2;
   const tF = (tCal * 0.25) / 9;
   const tC = (tCal - (tP*4) - (tF*9)) / 4;
   return { cal: Math.round(tCal), p: Math.round(tP), f: Math.round(tF), c: Math.round(tC) };
@@ -511,7 +520,7 @@ function renderAIAdvice() {
 // ═══ Save Record ═══
 function saveRecord() {
   saveMeal();
-  const today = new Date().toISOString().slice(0,10);
+  const today = currentDateStr;
   const idx = S.records.findIndex(r => r.date === today);
   const doneCount = S.trainItems.filter(x=>x.done).length;
   if (idx < 0) {
@@ -565,7 +574,9 @@ function saveRecord() {
     // ③ Injuries
     injuries: [...S.injuries],
     // ④ Protein/Supplement
-    protein: S.protein,
+    proteinP: S.proteinP,
+    proteinF: S.proteinF,
+    proteinC: S.proteinC,
     supplement: S.supplement,
     // ⑧ Recovery snapshot
     recoveryTimers: JSON.parse(JSON.stringify(S.recoveryTimers))
@@ -590,7 +601,8 @@ function sendToAI() {
   const {p,f,c} = totalPFC();
   const kcal = Math.round(p*4+f*9+c*4);
   const equipMap = {bodyweight:'自重',dumbbells:'ダンベル×2',pullup:'懸垂機',barbell:'バーベル',bench:'ベンチ',bands:'チューブ'};
-  const goalMap = {bulk:'増量',recomp:'筋肉をつけて痩せる',cut:'減量'};
+  const bodyTypeMap = {slim:'スリム・引き締め',lean:'細マッチョ',muscular:'マッチョ',healthy:'健康的・ナチュラル',athlete:'アスリート体型'};
+  const bodyTypeStr = bodyTypeMap[s.bodyType] || s.bodyType;
   const equip = (s.equipment||[]).map(e=>equipMap[e]||e).join('・');
 
   // Past 7 days
@@ -641,11 +653,11 @@ function sendToAI() {
     if (recInfo.priority.length > 0) recoveryPrompt += `超回復ピーク（優先的に鍛えるべき部位）：${recInfo.priority.join('、')}\n`;
   }
 
-  // ⑤ Stretch prompt
-  let stretchPrompt = '\n【ストレッチ】\nトレーニング前のウォームアップストレッチと、トレーニング後のクールダウンストレッチを各2-3種目提案してください。\n';
+  // ⑤ Stretch prompt (Integrated into training)
+  let stretchPrompt = '\n【ストレッチ含む】\nトレーニング種目と合わせて、ウォームアップやクールダウンのストレッチも「明日のトレーニング」の中に一元化して提案してください。\n';
   if (recInfo.stretching.length > 0 || S.injuries.length > 0) {
     const strParts = [...new Set([...recInfo.stretching, ...S.injuries.map(i=>({shoulder:'肩',lower_back:'腰',knee:'膝',elbow:'肘',wrist:'手首'}[i]||i))])];
-    stretchPrompt += `特に「${strParts.join('・')}」については、ウエイトトレーニングの代わりにストレッチメニューを優先提案してください。\n`;
+    stretchPrompt += `特に「${strParts.join('・')}」については、ウエイトの代わりにストレッチをメインに提案してください。\n`;
   }
 
   // ② Level-based difficulty
@@ -672,13 +684,15 @@ function sendToAI() {
 ・目標に合わせた負荷設定
 ・必要なことだけ答える
 ・毎日1つモチベ知識を入れる
+・ユーザーの「なりたい体型」に合わせて、適切な目標体重(kg)と目標体脂肪率(%)を「■目標設定」として提案してください
 ・【重要】トレーニングメニューの箇条書き内には、「種目名 回数×セット数」のみを記述し、「肘に違和感があれば～」などの注意書きやアドバイス文は絶対に含めないでください。
 ${injuryPrompt}${recoveryPrompt}${stretchPrompt}${levelPrompt}
 【ユーザー情報】
 (${s.gender==='female'?'女性':'男性'})
-目標：${goalMap[s.goal]||s.goal}
+なりたい体型：${bodyTypeStr}
+お悩み・気になる箇所：${s.concerns||'特になし'}
 器具：${equip}
-${s.height?'身長：'+s.height+'cm':''}${s.age?' 年齢：'+s.age+'歳':''}${s.targetWeight?' 目標体重：'+s.targetWeight+'kg':''}
+${s.height?'身長：'+s.height+'cm':''}${s.age?' 年齢：'+s.age+'歳':''}
 活動レベル：${s.activityLevel}
 
 ${history}
@@ -703,17 +717,14 @@ ${S.extraTraining?'追加トレーニング：'+S.extraTraining:''}
 夜: P:◯g F:◯g C:◯g
 間食: P:◯g F:◯g C:◯g
 
-■ウォームアップストレッチ
-・種目名 秒数or回数
-・種目名 秒数or回数
+■目標設定
+・目標体重: ◯kg
+・目標体脂肪率: ◯%
 
-■明日のトレーニング
-※種目名と回数・セット数のみを箇条書きすること。目的や解説の記載は厳禁。
-・種目名 ◯回×◯セット
-・種目名 ◯回×◯セット
-
-■クールダウンストレッチ
-・種目名 秒数or回数
+■明日のトレーニング（ストレッチ含む）
+※種目名と回数・セット数（または秒数）のみを箇条書きすること。目的や解説の記載は厳禁。
+・種目名 ◯回×◯セット または ◯秒
+・種目名 ◯回×◯セット または ◯秒
 
 ■食事アドバイス
 朝:
@@ -849,19 +860,57 @@ function renderSettings(){
   const s=S.settings;
   document.getElementById('set-age').value=s.age||'';
   document.getElementById('set-height').value=s.height||'';
-  document.getElementById('set-target').value=s.targetWeight||'';
+  document.getElementById('set-body-type').value=s.bodyType||'healthy';
+  document.getElementById('set-concerns').value=s.concerns||'';
   document.getElementById('set-activity').value=s.activityLevel||'moderate';
   document.getElementById('set-gender').value=s.gender||'male';
   document.getElementById('set-gemini-key').value=s.geminiKey||'';
   document.getElementById('set-openai-key').value=s.openaiKey||'';
-  document.querySelectorAll('.goal-btn').forEach(b=>b.classList.toggle('active',b.dataset.goal===s.goal));
 }
-function bindSetting(id,key){const el=document.getElementById(id);if(!el)return;el.addEventListener('change',()=>{S.settings[key]=el.value;saveSets();if(['height','age','targetWeight','gender','activityLevel'].includes(key)){updateBodyStatus();renderPFC();}})}
+function bindSetting(id,key){const el=document.getElementById(id);if(!el)return;el.addEventListener('change',()=>{S.settings[key]=el.value;saveSets();if(['height','age','bodyType','gender','activityLevel'].includes(key)){updateBodyStatus();renderPFC();}})}
 function saveSets(){DB.set('settings',S.settings)}
 function toggleEquip(e){const a=S.settings.equipment||[];const i=a.indexOf(e);if(i>=0)a.splice(i,1);else a.push(e);S.settings.equipment=a;saveSets();renderEquip();}
-function setGoal(g){S.settings.goal=g;saveSets();renderPFC();document.querySelectorAll('.goal-btn').forEach(b=>b.classList.toggle('active',b.dataset.goal===g))}
 
 // ═══ ① History (Enhanced with training details, protein, supplements, injuries) ═══
+function loadPastData(dateStr) {
+  currentDateStr = dateStr;
+  const rec = S.records.find(r => r.date === dateStr);
+  if (rec) {
+    S.weight = rec.weight || '';
+    S.fat = rec.fat || '';
+    S.steps = rec.steps || '';
+    S.meals = JSON.parse(JSON.stringify(rec.meals || { breakfast:{food:'',p:'',f:'',c:''}, lunch:{food:'',p:'',f:'',c:''}, dinner:{food:'',p:'',f:'',c:''}, snack:{food:'',p:'',f:'',c:''} }));
+    S.trainItems = JSON.parse(JSON.stringify(rec.trainItems || []));
+    S.extraTraining = rec.extraTraining || '';
+    S.injuries = [...(rec.injuries || [])];
+    S.proteinP = rec.proteinP || rec.protein || '';
+    S.proteinF = rec.proteinF || '';
+    S.proteinC = rec.proteinC || '';
+    S.supplement = rec.supplement || '';
+    
+    document.getElementById('inp-weight').value = S.weight;
+    document.getElementById('inp-fat').value = S.fat;
+    document.getElementById('inp-steps').value = S.steps;
+    document.getElementById('inp-sup-p').value = S.proteinP;
+    document.getElementById('inp-sup-f').value = S.proteinF;
+    document.getElementById('inp-sup-c').value = S.proteinC;
+    document.getElementById('inp-supplement').value = S.supplement;
+    document.getElementById('inp-extra-training').value = S.extraTraining;
+    
+    renderMeal();
+    renderTrainList();
+    renderInjuryUI();
+    updateBodyStatus();
+    renderPFC();
+    
+    const dEl = document.getElementById('topbar-date');
+    if (dEl) dEl.textContent = `${dateStr} (編集中)`;
+    
+    navTo('today');
+    showToast(`${dateStr} のデータを読み込みました`);
+  }
+}
+
 function renderHistory() {
   const hl = document.getElementById('history-list');
   if (!hl) return;
@@ -886,10 +935,10 @@ function renderHistory() {
     }
     // ④ Protein/Supplement display
     let tSuppl = '';
-    if (r.protein || r.supplement) {
+    if (r.proteinP || r.protein || r.supplement) {
       tSuppl = '<div class="hist-suppl">';
-      if (r.protein) tSuppl += `💊 プロテイン: ${r.protein}g `;
-      if (r.supplement) tSuppl += `💊 サプリ: ${r.supplement}`;
+      if (r.proteinP || r.protein) tSuppl += `💊 サプリPFC: P${r.proteinP||r.protein||0}g F${r.proteinF||0}g C${r.proteinC||0}g `;
+      if (r.supplement) tSuppl += `💊 サプリメモ: ${r.supplement}`;
       tSuppl += '</div>';
     }
     // ③ Injury display
@@ -901,7 +950,7 @@ function renderHistory() {
     html += `
     <div class="card" style="margin-bottom:12px; font-size:13px; line-height:1.5;">
       <div style="display:flex; justify-content:space-between; color:#03c076; font-weight:bold; margin-bottom:8px;">
-        <span>${r.date}</span>
+        <span>${r.date} <button class="btn-ghost" style="padding:2px 8px; font-size:10px; border-radius:4px; margin-left:8px; cursor:pointer;" onclick="loadPastData('${r.date}')">編集する</button></span>
         <span>達成率 ${r.trainDone||0}%</span>
       </div>
       <div style="color:#eaecef;">
@@ -935,10 +984,24 @@ function renderGame() {
     const counts = {};
     S.inventory.forEach(i => counts[i] = (counts[i]||0) + 1);
     invList.innerHTML = Object.entries(counts).map(([name, count]) => `
-      <div style="background:#2b3139; padding:8px 12px; border-radius:6px; font-size:13px; color:#eaecef; display:flex; align-items:center; border:1px solid #363c45;">
-        ${name} <span style="background:#03c076; color:#0b0e11; font-weight:bold; padding:2px 6px; border-radius:10px; font-size:11px; margin-left:8px;">x${count}</span>
+      <div style="background:#2b3139; padding:8px 12px; border-radius:6px; font-size:13px; color:#eaecef; display:flex; align-items:center; justify-content:space-between; border:1px solid #363c45; margin-bottom:8px;">
+        <div>${name} <span style="background:#03c076; color:#0b0e11; font-weight:bold; padding:2px 6px; border-radius:10px; font-size:11px; margin-left:8px;">x${count}</span></div>
+        <button class="btn-ghost" style="padding:4px 8px; font-size:11px; border-radius:4px; border:1px solid #03c076; color:#03c076; cursor:pointer;" onclick="useInventoryItem('${name}')">使う</button>
       </div>
     `).join('');
+  }
+}
+
+function useInventoryItem(name) {
+  if (confirm(`${name} を使用しますか？`)) {
+    const idx = S.inventory.indexOf(name);
+    if (idx >= 0) {
+      S.inventory.splice(idx, 1);
+      DB.set('game_inventory', S.inventory);
+      triggerConfetti();
+      showToast(`${name} を使用しました！`);
+      renderGame();
+    }
   }
 }
 
@@ -1065,17 +1128,10 @@ function updateBodyStatus() {
     document.getElementById('fat-text').textContent = '--';
     document.getElementById('fat-pointer').style.left = '0%';
   }
-  const tw = parseFloat(S.settings.targetWeight);
-  const startW = S.records.length > 0 ? parseFloat(S.records[0].weight) : w;
-  if (w && tw && startW && tw !== startW) {
-    const totalDiff = Math.abs(startW - tw);
-    const currDiff = Math.abs(w - tw);
-    const percent = Math.max(0, Math.min(100, ((totalDiff - currDiff) / totalDiff) * 100));
-    document.getElementById('goal-diff').textContent = Math.abs(w - tw).toFixed(1);
-    document.getElementById('goal-percent').textContent = percent.toFixed(1) + '%';
-    document.getElementById('goal-progress-bar').style.width = percent + '%';
-  } else if (w && tw) {
-    document.getElementById('goal-diff').textContent = Math.abs(w - tw).toFixed(1);
+  // Target weight calculation removed since AI sets it dynamically.
+  const diffEl = document.getElementById('goal-diff');
+  if (diffEl) {
+    diffEl.textContent = '--';
     document.getElementById('goal-percent').textContent = '--%';
     document.getElementById('goal-progress-bar').style.width = '0%';
   }
